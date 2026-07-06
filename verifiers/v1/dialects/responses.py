@@ -9,6 +9,7 @@ endpoint and this dialect parses a copy for the trace. Server-side statefulness
 
 import json
 from collections import deque
+from copy import deepcopy
 from typing import Any, cast
 
 from openai.types.responses import (
@@ -340,23 +341,34 @@ class ResponsesDialect(Dialect[dict, OpenAIResponse]):
 
     def serialize_response(self, response: Response) -> dict:
         message = response.message
-        output: list[dict] = []
+        output = deepcopy(message.provider_state or [])
+        saw_message = False
+        seen_calls = set()
+        for item in output:
+            if item.get("type") == "message":
+                saw_message = True
+                for part in item.get("content") or []:
+                    if part.get("type") == "output_text":
+                        part["text"] = message.content or ""
+            elif item.get("type") == "function_call":
+                seen_calls.add(item.get("call_id"))
         if message.content:
-            output.append(
-                {
-                    "type": "message",
-                    "id": f"msg_{response.id or 'vf-intercept'}",
-                    "role": "assistant",
-                    "status": "completed",
-                    "content": [
-                        {
-                            "type": "output_text",
-                            "text": message.content,
-                            "annotations": [],
-                        }
-                    ],
-                }
-            )
+            if not saw_message:
+                output.append(
+                    {
+                        "type": "message",
+                        "id": f"msg_{response.id or 'vf-intercept'}",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": message.content,
+                                "annotations": [],
+                            }
+                        ],
+                    }
+                )
         output += [
             {
                 "type": "function_call",
@@ -367,6 +379,7 @@ class ResponsesDialect(Dialect[dict, OpenAIResponse]):
                 "status": "completed",
             }
             for call in message.tool_calls or []
+            if call.id not in seen_calls
         ]
         usage = response.usage
         return {

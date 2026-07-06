@@ -248,11 +248,11 @@ class InterceptionServer:
         self, session: RolloutSession, dialect: Dialect, response: Response
     ) -> Response:
         """Run the taskset's `@intercept`s over a completed model turn (priority order, first
-        rewrite wins). An `AssistantMessage` rewrite is serialized to this dialect's wire shape;
-        a dict rewrite is the wire body wholesale. Either way the wire body is re-parsed and that
-        parse is what the harness receives AND what the trace commits — the committed message
-        must hash-match the next request's replayed history (see `graph.message_hash`) or the
-        prefix walk breaks and duplicates the turn. A rewritten turn carries no sampled tokens
+        rewrite wins). A `Response` or `AssistantMessage` rewrite is serialized to this dialect's
+        wire shape; a dict rewrite is the wire body wholesale. Either way the wire body is re-parsed
+        and that parse is what the harness receives AND what the trace commits — the committed
+        message must hash-match the next request's replayed history (see `graph.message_hash`) or
+        the prefix walk breaks and duplicates the turn. A rewritten turn carries no sampled tokens
         (the model's tokens belong to the original, which only survives where the interceptor
         stashes it, e.g. `trace.info`)."""
         for intercept in session.intercepts:
@@ -261,6 +261,8 @@ class InterceptionServer:
             )
             if replacement is None:
                 continue
+            if isinstance(replacement, Response):
+                replacement = dialect.serialize_response(replacement)
             if isinstance(replacement, AssistantMessage):
                 replacement = dialect.serialize_response(
                     response.model_copy(

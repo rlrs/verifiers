@@ -182,7 +182,7 @@ The decorators and what each can receive:
 | `@vf.metric` | `task`, `trace`, `runtime` | `priority=0` | `float`, **or a `dict[str, float]`** merged into `trace.metrics` |
 | `@vf.group_reward` | `task`, `traces` | `weight=1.0`, `priority=0` | `list[float]`, one per trace |
 | `@vf.stop` | `trace` | `priority=0` | `bool` |
-| `@vf.intercept` | `response`, `trace` | `priority=0` | `None` / `AssistantMessage` / raw wire `dict` |
+| `@vf.intercept` | `response`, `trace` | `priority=0` | `None` / `Response` / `AssistantMessage` / raw wire `dict` |
 
 Good to know:
 
@@ -333,18 +333,20 @@ over every completed turn (streamed turns buffer until the interceptors have rul
 
 ```python
 @vf.intercept
-async def block_destructive(self, response: vf.Response, trace: vf.Trace) -> vf.AssistantMessage | None:
+async def block_destructive(self, response: vf.Response, trace: vf.Trace) -> vf.Response | None:
     if not any("rm -rf" in c.arguments for c in response.message.tool_calls or []):
         return None                            # pass through, byte-exact
     trace.info.setdefault("intercepted", []).append(response.message.model_dump())
-    return vf.AssistantMessage(content="That command is blocked by policy.")
+    response.message = vf.AssistantMessage(content="That command is blocked by policy.")
+    return response
 ```
 
-Return `None` to pass the turn through untouched, a `vf.AssistantMessage` to replace the model's
-message (the tool call never executes; the framework serializes it back to the request's wire
-format), or a **raw wire dict** (the dialect's native response shape, start from `response.raw`)
-for full control — e.g. keeping Anthropic server-tool or signed-thinking blocks. The first
-interceptor (by `priority`, then name) that returns non-None wins.
+Return `None` to pass the turn through untouched, a mutated `vf.Response` to rewrite the typed turn,
+a `vf.AssistantMessage` to replace only the model's message (the tool call never executes; the
+framework serializes it back to the request's wire format), or a **raw wire dict** (the dialect's
+native response shape, start from `response.raw`) for full control — e.g. keeping Anthropic
+server-tool or signed-thinking blocks. The first interceptor (by `priority`, then name) that
+returns non-None wins.
 
 The rewrite is what the harness receives **and what the trace records** — from the next turn's
 replayed history the model sees the rewrite as its own words. The original turn survives only
