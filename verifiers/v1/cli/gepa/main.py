@@ -11,6 +11,7 @@ pydantic-config help — narrowed to whatever `--taskset.id` / `--harness.id` ar
 """
 
 import logging
+import signal
 import sys
 
 from pydantic_config import cli
@@ -64,6 +65,10 @@ def main(argv: list[str] | None = None) -> None:
             "wrote config to %s", write_config(config, gepa_output_path(config))
         )
         return
+
+    # Make SIGTERM behave like Ctrl-C (SIGINT) so a killed/timed-out run still runs the
+    # adapter's `serving()` teardown (tears down interception pool / tool-server runtimes).
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     env = vf.Environment(config)
     result = run_gepa(env, config)

@@ -24,11 +24,14 @@ logger = logging.getLogger(__name__)
 def run_gepa(env: Environment, config: GEPAv1Config) -> GEPAResult:
     logger.info("gepa config:\n%s", config.model_dump_json(indent=2))
     all_tasks = env.taskset.load_tasks()
-    seed_prompt = resolve_gepa_seed_prompt(env, all_tasks, config.initial_prompt)
     train_tasks, val_tasks = split_tasks(
         all_tasks, config.num_train, config.num_val, config.shuffle, config.seed
     )
-    tasks_by_idx = {task.idx: task for task in (*train_tasks, *val_tasks)}
+    selected_tasks = [*train_tasks, *val_tasks]
+    # Seed from the tasks GEPA actually evaluates (train ∪ val), not the full pre-split pool —
+    # a taskset with per-task system prompts could otherwise seed from a task in neither split.
+    seed_prompt = resolve_gepa_seed_prompt(env, selected_tasks, config.initial_prompt)
+    tasks_by_idx = {task.idx: task for task in selected_tasks}
 
     run_dir = gepa_output_path(config) if config.save_results else None
     if run_dir is not None:
@@ -45,6 +48,9 @@ def run_gepa(env: Environment, config: GEPAv1Config) -> GEPAResult:
         log_file=run_dir / "gepa.log" if run_dir is not None else None,
         perfect_score=config.perfect_score,
     )
+    # Tell the display the real valset ids/size so it classifies full-valset evals correctly
+    # (it otherwise assumes the default size of 50 and mislabels the live UI for other --num-val).
+    display.set_valset_info(len(val_tasks), [task.idx for task in val_tasks])
 
     with display:
         client = resolve_client(config.client)
@@ -76,8 +82,12 @@ def run_gepa(env: Environment, config: GEPAv1Config) -> GEPAResult:
             )
             if config.perfect_score is not None:
                 optimize_kwargs["perfect_score"] = config.perfect_score
-            result = optimize(**optimize_kwargs)
-            adapter.loop.run_until_complete(client.close())
+            try:
+                result = optimize(**optimize_kwargs)
+            finally:
+                # Close the client on the adapter's loop while it's still open — `__exit__`
+                # closes that loop, so this must run even if `optimize` raises.
+                adapter.loop.run_until_complete(client.close())
 
         save_path = None
         if run_dir is not None:
