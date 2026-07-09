@@ -9,7 +9,7 @@ from typing import Callable
 from openai import OpenAI
 
 from verifiers.v1.clients.config import resolve_api_key
-from verifiers.v1.configs.gepa import GEPAConfig
+from verifiers.v1.gepa.config import GEPAConfig
 
 
 def build_reflection_lm(config: GEPAConfig) -> Callable[[str], str]:

@@ -2,26 +2,26 @@
 
 v1 tasksets have no generic train/val split concept (`TasksetConfig` has no `split` field;
 individual tasksets define ad hoc ones inconsistently), so GEPA carves one out of
-`taskset.load_tasks()` itself: shuffle once, then slice into disjoint chunks.
+`taskset.load_tasks()` itself, sampling exactly the way `run_eval` does — an optional
+`shuffle` under a fixed seed — then slicing into two disjoint chunks instead of eval's one.
 """
 
 import logging
-import random
 
 from verifiers.v1.env import Environment
 from verifiers.v1.task import Task
+from verifiers.v1.utils.sampling import sample_tasks
 
 logger = logging.getLogger(__name__)
 
 
 def split_tasks(
-    tasks: list[Task], num_train: int, num_val: int, shuffle: bool, seed: int
+    tasks: list[Task], num_train: int, num_val: int, shuffle: bool
 ) -> tuple[list[Task], list[Task]]:
-    """The taskset's tasks, split into disjoint `(train, val)` slices. `train` feeds reflection
-    minibatches; `val` scores each candidate system prompt for the pareto frontier."""
-    pool = list(tasks)
-    if shuffle:
-        random.Random(seed).shuffle(pool)
+    """The taskset's tasks, split into disjoint `(train, val)` slices — the shared
+    `sample_tasks` selection `run_eval` uses, taking two slices instead of one (`train` feeds
+    reflection minibatches; `val` scores each candidate for the pareto frontier)."""
+    pool = sample_tasks(tasks, None, shuffle)
     if num_train + num_val > len(pool):
         raise ValueError(
             f"requested {num_train} train + {num_val} val tasks, but the taskset only "
