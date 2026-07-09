@@ -9,14 +9,14 @@ import logging
 from gepa.api import optimize
 from gepa.core.result import GEPAResult
 
-from verifiers.v1.cli.output import output_path, write_config
+from verifiers.v1.cli.output import append_trace, output_path, save_config
 from verifiers.v1.clients import ModelContext, resolve_client
 from verifiers.v1.env import Environment
 from verifiers.v1.gepa.adapter import GEPAv1Adapter
 from verifiers.v1.gepa.config import GEPAConfig
 from verifiers.v1.gepa.dataset import resolve_gepa_seed_prompt, split_tasks
-from verifiers.v1.gepa.output import write_gepa_result
 from verifiers.v1.gepa.reflection import build_reflection_lm
+from verifiers.v1.trace import Trace
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ async def run_gepa(env: Environment, config: GEPAConfig) -> GEPAResult:
 
     run_dir = output_path(config) if config.save_results else None
     if run_dir is not None:
-        write_config(config, run_dir)
+        save_config(config, run_dir)  # config.toml + a fresh results.jsonl (like run_eval)
         logger.info("results: %s", run_dir)
 
     client = resolve_client(config.client)
@@ -58,12 +58,21 @@ async def run_gepa(env: Environment, config: GEPAConfig) -> GEPAResult:
                 if config.max_concurrent
                 else None
             )
+            # Stream every rollout's trace to results.jsonl as it finalizes — the same persist
+            # hook run_eval passes to Episode.run (each trace records its candidate prompt).
+            write_lock = asyncio.Lock()
+
+            async def on_complete(trace: Trace) -> None:
+                if run_dir is not None:
+                    await append_trace(run_dir, trace, write_lock)
+
             adapter = GEPAv1Adapter(
                 env=env,
                 ctx=ctx,
                 tasks=tasks_by_idx,
                 loop=asyncio.get_running_loop(),
                 semaphore=semaphore,
+                on_complete=on_complete,
                 state_columns=config.state_columns,
             )
             optimize_kwargs: dict = dict(
@@ -87,7 +96,4 @@ async def run_gepa(env: Environment, config: GEPAConfig) -> GEPAResult:
             result = await asyncio.to_thread(optimize, **optimize_kwargs)
     finally:
         await client.close()
-
-    if run_dir is not None:
-        write_gepa_result(run_dir, result, config)
     return result

@@ -9,6 +9,7 @@ loop with `run_coroutine_threadsafe` and blocks on the result — the one sync�
 """
 
 import asyncio
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 
@@ -36,6 +37,9 @@ class GEPAv1Adapter:
     tasks: dict[int, Task]
     loop: asyncio.AbstractEventLoop
     semaphore: asyncio.Semaphore | None = None
+    on_complete: Callable[[Trace], Awaitable[None]] | None = None
+    """Called with each rollout's trace as it finalizes — the runner's persist hook that
+    streams traces to `results.jsonl`, exactly as `run_eval` does."""
     state_columns: list[str] = field(default_factory=list)
     propose_new_texts: Callable[..., Candidate] | None = None
     """Part of GEPA's adapter protocol — its proposer reads this attribute on every reflection
@@ -70,7 +74,7 @@ class GEPAv1Adapter:
         ]
         episodes = [self.env.episode(task, self.ctx, n=1) for task in tasks]
         results = await asyncio.gather(
-            *(episode.run(self.semaphore) for episode in episodes)
+            *(episode.run(self.semaphore, self.on_complete) for episode in episodes)
         )
         return [trace for episode_traces in results for trace in episode_traces]
 
