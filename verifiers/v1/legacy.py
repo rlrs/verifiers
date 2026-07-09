@@ -440,12 +440,12 @@ async def run_legacy_eval(config) -> list[Trace]:
     runtime / interception server. All v0 specifics live here; the CLI only branches on
     `config.is_legacy`."""
     import asyncio
-    import random
 
     from verifiers import load_environment
 
     from verifiers.v1.cli.output import append_trace, save_config
     from verifiers.v1.utils.install import ensure_installed
+    from verifiers.v1.utils.sampling import sample_tasks
 
     # Install from the env hub on demand for an `org/name[@version]` id (a local id is
     # already importable), then load by module name.
@@ -453,11 +453,7 @@ async def run_legacy_eval(config) -> list[Trace]:
     if config.extra_env_kwargs:  # post-load knobs (max_total_completion_tokens, …)
         env.set_kwargs(**config.extra_env_kwargs)
     dataset = env.get_eval_dataset()  # the eval split (falls back to train when unset)
-    idxs = list(range(len(dataset)))
-    if config.shuffle:
-        random.Random(0).shuffle(idxs)  # fixed seed: same sample every run
-    if config.num_tasks is not None:
-        idxs = idxs[: config.num_tasks]
+    idxs = sample_tasks(list(range(len(dataset))), config.num_tasks, config.shuffle)
 
     client = _eval_client(config.client, config.model)
     sampling_args = config.sampling.model_dump(exclude_none=True)
