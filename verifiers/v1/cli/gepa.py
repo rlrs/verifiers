@@ -31,9 +31,7 @@ def main(argv: list[str] | None = None) -> None:
         )
     setup_logging("DEBUG" if config.verbose else "INFO")
     if config.dry_run:  # resolved + validated; write it to the output dir and exit
-        logger.info(
-            "wrote config to %s", write_config(config, output_path(config))
-        )
+        logger.info("wrote config to %s", write_config(config, output_path(config)))
         return
 
     # Make SIGTERM behave like Ctrl-C (SIGINT) so a killed/timed-out run still runs the

@@ -44,7 +44,9 @@ async def run_gepa(env: Environment, config: GEPAConfig) -> GEPAResult:
 
     run_dir = output_path(config) if config.save_results else None
     if run_dir is not None:
-        save_config(config, run_dir)  # config.toml + a fresh results.jsonl (like run_eval)
+        save_config(
+            config, run_dir
+        )  # config.toml + a fresh results.jsonl (like run_eval)
         logger.info("results: %s", run_dir)
 
     client = resolve_client(config.client)

@@ -11,10 +11,14 @@ from typing import TypeVar
 
 T = TypeVar("T")
 
-_SHUFFLE_SEED = 0  # fixed so `--shuffle` samples the same tasks every run (reproducible)
+_SHUFFLE_SEED = (
+    0  # fixed so `--shuffle` samples the same tasks every run (reproducible)
+)
 
 
-def sample_tasks(items: list[T], num: int | None = None, shuffle: bool = False) -> list[T]:
+def sample_tasks(
+    items: list[T], num: int | None = None, shuffle: bool = False
+) -> list[T]:
     """Up to `num` of `items` (all if `None`), optionally shuffled under the fixed seed. Copies
     the input rather than shuffling in place."""
     items = list(items)
