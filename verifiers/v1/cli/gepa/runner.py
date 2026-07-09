@@ -15,13 +15,13 @@ from verifiers.v1.cli.gepa.output import gepa_output_path
 from verifiers.v1.cli.gepa.reflection import build_reflection_lm
 from verifiers.v1.cli.output import write_config
 from verifiers.v1.clients import ModelContext, resolve_client
-from verifiers.v1.configs.gepa import GEPAv1Config
+from verifiers.v1.configs.gepa import GEPAConfig
 from verifiers.v1.env import Environment
 
 logger = logging.getLogger(__name__)
 
 
-def run_gepa(env: Environment, config: GEPAv1Config) -> GEPAResult:
+def run_gepa(env: Environment, config: GEPAConfig) -> GEPAResult:
     logger.info("gepa config:\n%s", config.model_dump_json(indent=2))
     all_tasks = env.taskset.load_tasks()
     train_tasks, val_tasks = split_tasks(

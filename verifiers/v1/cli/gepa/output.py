@@ -4,10 +4,10 @@ taskset/model/harness."""
 
 from pathlib import Path
 
-from verifiers.v1.configs.gepa import GEPAv1Config
+from verifiers.v1.configs.gepa import GEPAConfig
 
 
-def gepa_output_path(config: GEPAv1Config) -> Path:
+def gepa_output_path(config: GEPAConfig) -> Path:
     """`outputs/gepa/<taskset>--<model>--<harness>/<uuid>` (or the explicit `--run-dir`). The
     per-run `uuid` leaf means runs never overwrite each other."""
     if config.run_dir is not None:

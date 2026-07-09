@@ -9,10 +9,10 @@ from typing import Callable
 from openai import OpenAI
 
 from verifiers.v1.clients.config import resolve_api_key
-from verifiers.v1.configs.gepa import GEPAv1Config
+from verifiers.v1.configs.gepa import GEPAConfig
 
 
-def build_reflection_lm(config: GEPAv1Config) -> Callable[[str], str]:
+def build_reflection_lm(config: GEPAConfig) -> Callable[[str], str]:
     client_config = config.reflection_client or config.client
     client = OpenAI(
         base_url=client_config.base_url,

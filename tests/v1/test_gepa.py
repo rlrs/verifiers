@@ -1,5 +1,5 @@
 """GEPA-for-v1 tests: the train/val split + seed-prompt validation, the `GEPAv1Adapter`
-(against a fake `Environment` — no real rollouts), `GEPAv1Config` defaults and the CLI's
+(against a fake `Environment` — no real rollouts), `GEPAConfig` defaults and the CLI's
 argument guards, and one `@pytest.mark.e2e` live optimization run (needs `PRIME_API_KEY`;
 skipped without one, same as the rest of the v1 e2e suite — see `conftest.py`)."""
 
@@ -15,7 +15,7 @@ from verifiers.v1.cli.gepa.dataset import resolve_gepa_seed_prompt, split_tasks
 from verifiers.v1.cli.gepa.main import main
 from verifiers.v1.cli.gepa.runner import run_gepa
 from verifiers.v1.clients import ModelContext
-from verifiers.v1.configs.gepa import GEPAv1Config
+from verifiers.v1.configs.gepa import GEPAConfig
 from verifiers.v1.env import Environment
 from verifiers.v1.task import Task
 from verifiers.v1.trace import Error, Trace
@@ -200,16 +200,16 @@ def test_make_reflective_dataset_builds_one_record_per_trace():
     assert record["notes"] == "scratch"
 
 
-# --- GEPAv1Config + CLI guards --------------------------------------------------
+# --- GEPAConfig + CLI guards --------------------------------------------------
 
 
 def test_model_is_required():
     with pytest.raises(ValidationError):
-        GEPAv1Config(taskset={"id": "echo-v1"})
+        GEPAConfig(taskset={"id": "echo-v1"})
 
 
 def test_defaults():
-    config = GEPAv1Config(taskset={"id": "echo-v1"}, model="gpt-4.1-mini")
+    config = GEPAConfig(taskset={"id": "echo-v1"}, model="gpt-4.1-mini")
     assert config.num_train == 100
     assert config.num_val == 50
     assert config.shuffle is True
@@ -222,9 +222,9 @@ def test_defaults():
 
 
 def test_is_legacy_inherited_from_env_config():
-    v1_config = GEPAv1Config(taskset={"id": "echo-v1"}, model="gpt-4.1-mini")
+    v1_config = GEPAConfig(taskset={"id": "echo-v1"}, model="gpt-4.1-mini")
     assert v1_config.is_legacy is False
-    legacy_config = GEPAv1Config(id="some-v0-env", model="gpt-4.1-mini")
+    legacy_config = GEPAConfig(id="some-v0-env", model="gpt-4.1-mini")
     assert legacy_config.is_legacy is True
 
 
@@ -265,7 +265,7 @@ def test_gepa_optimizes_echo_v1(tmp_path):
     """`echo-v1` has 3 tasks and already sets `Task.system_prompt` — a tiny 2/1 train/val split
     with a handful of metric calls is enough to exercise the whole loop (seed -> evaluate ->
     reflect -> re-evaluate -> save) without needing a real dataset download."""
-    config = GEPAv1Config(
+    config = GEPAConfig(
         taskset={"id": "echo-v1"},
         harness={"id": "null"},
         model=E2E_MODEL,

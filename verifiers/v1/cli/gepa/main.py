@@ -26,7 +26,7 @@ from verifiers.v1.cli.resolve import (
     references_config_file,
     with_positional_taskset,
 )
-from verifiers.v1.configs.gepa import GEPAv1Config
+from verifiers.v1.configs.gepa import GEPAConfig
 from verifiers.v1.utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> None:
         print(USAGE)
         sys.argv = [sys.argv[0], "--help"]
         cli(
-            narrow_config(GEPAv1Config, argv)
+            narrow_config(GEPAConfig, argv)
         )  # full option help, narrowed to the given ids
         return
     if not extract_id(argv, "taskset") and not references_config_file(argv):
@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> None:
             USAGE
         )  # need a taskset (positional / --taskset.id) or a @ file.toml
 
-    config_type = narrow_config(GEPAv1Config, argv)
+    config_type = narrow_config(GEPAConfig, argv)
     sys.argv = [sys.argv[0], *argv]  # let prime-pydantic-config render help/errors
     config = cli(config_type)
     if config.is_legacy:

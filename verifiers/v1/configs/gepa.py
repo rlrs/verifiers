@@ -1,4 +1,4 @@
-"""The `GEPAv1Config`: the single config object the `gepa` CLI parses.
+"""The `GEPAConfig`: the single config object the `gepa` CLI parses.
 
 GEPA optimizes one taskset's `Task.system_prompt` by alternating rollouts (`evaluate`) with a
 teacher LM reflecting on the reflective dataset (`make_reflective_dataset`) — see
@@ -18,7 +18,7 @@ from verifiers.v1.env import EnvConfig
 from verifiers.v1.types import SamplingConfig
 
 
-class GEPAv1Config(EnvConfig):
+class GEPAConfig(EnvConfig):
     """The GEPA run plus its environment. `model` runs the rollouts under optimization;
     `reflection_model` (defaults to `model`) proposes new system prompts from the reflective
     dataset. No default for `model` — a GEPA run can spend a large eval budget, so pick it
