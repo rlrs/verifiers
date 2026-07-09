@@ -1,7 +1,6 @@
-"""Where a GEPA run writes, and the outcome it writes there. Mirrors
-`verifiers.v1.cli.output.output_path` with a `gepa/` segment so optimization runs don't share
-a directory namespace with eval runs of the same taskset/model/harness. v1-native: stdlib only,
-no v0 code — GEPA persists its own optimizer state (`gepa_state.bin`, logs) into the same dir."""
+"""The outcome a GEPA run writes to its output dir (which `verifiers.v1.cli.output.output_path`
+resolves, shared with eval). v1-native: stdlib only, no v0 code — GEPA also persists its own
+optimizer state (`gepa_state.bin`, logs) into the same dir."""
 
 import json
 from pathlib import Path
@@ -9,15 +8,6 @@ from pathlib import Path
 from gepa.core.result import GEPAResult
 
 from verifiers.v1.gepa.config import GEPAConfig
-
-
-def gepa_output_path(config: GEPAConfig) -> Path:
-    """`outputs/gepa/<taskset>--<model>--<harness>/<uuid>` (or the explicit `--run-dir`). The
-    per-run `uuid` leaf means runs never overwrite each other."""
-    if config.run_dir is not None:
-        return config.run_dir
-    name = f"{config.taskset.name}--{config.model.replace('/', '--')}--{config.harness.name}"
-    return Path("outputs") / "gepa" / name / config.uuid
 
 
 def write_gepa_result(run_dir: Path, result: GEPAResult, config: GEPAConfig) -> None:

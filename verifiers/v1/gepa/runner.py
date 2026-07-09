@@ -9,13 +9,13 @@ import logging
 from gepa.api import optimize
 from gepa.core.result import GEPAResult
 
-from verifiers.v1.cli.output import write_config
+from verifiers.v1.cli.output import output_path, write_config
 from verifiers.v1.clients import ModelContext, resolve_client
 from verifiers.v1.env import Environment
 from verifiers.v1.gepa.adapter import GEPAv1Adapter
 from verifiers.v1.gepa.config import GEPAConfig
 from verifiers.v1.gepa.dataset import resolve_gepa_seed_prompt, split_tasks
-from verifiers.v1.gepa.output import gepa_output_path, write_gepa_result
+from verifiers.v1.gepa.output import write_gepa_result
 from verifiers.v1.gepa.reflection import build_reflection_lm
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ async def run_gepa(env: Environment, config: GEPAConfig) -> GEPAResult:
     seed_prompt = resolve_gepa_seed_prompt(env, selected_tasks, config.initial_prompt)
     tasks_by_idx = {task.idx: task for task in selected_tasks}
 
-    run_dir = gepa_output_path(config) if config.save_results else None
+    run_dir = output_path(config) if config.save_results else None
     if run_dir is not None:
         write_config(config, run_dir)
         logger.info("results: %s", run_dir)

@@ -15,8 +15,8 @@ import signal
 from pydantic_config import cli
 
 import verifiers.v1 as vf
-from verifiers.v1.cli.output import write_config
-from verifiers.v1.gepa import GEPAConfig, gepa_output_path, run_gepa
+from verifiers.v1.cli.output import output_path, write_config
+from verifiers.v1.gepa import GEPAConfig, run_gepa
 from verifiers.v1.utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> None:
     setup_logging("DEBUG" if config.verbose else "INFO")
     if config.dry_run:  # resolved + validated; write it to the output dir and exit
         logger.info(
-            "wrote config to %s", write_config(config, gepa_output_path(config))
+            "wrote config to %s", write_config(config, output_path(config))
         )
         return
 

@@ -66,8 +66,11 @@ class GEPAConfig(EnvConfig):
         32, validation_alias=AliasChoices("max_concurrent", "c")
     )
     """Max rollouts in flight at once, across the whole run."""
-    run_dir: Path | None = None
-    """Where to write results. None = a fresh dir under `outputs/gepa/<taskset>--<model>--<harness>/<uuid>`."""
+    output_dir: Path | None = Field(
+        None, validation_alias=AliasChoices("output_dir", "o")
+    )
+    """Where to write results (config.toml + system_prompt.txt + metadata.json). None = a fresh
+    per-run dir under `outputs/<taskset>--<model>--<harness>/<uuid>` (via `output_path`)."""
     save_results: bool = True
     verbose: bool = Field(False, validation_alias=AliasChoices("verbose", "v"))
     dry_run: bool = False

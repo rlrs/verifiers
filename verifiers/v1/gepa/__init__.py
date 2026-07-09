@@ -7,7 +7,6 @@ script (`verifiers.v1.cli.gepa`) is a thin entrypoint over this package.
 
 from verifiers.v1.gepa.adapter import GEPAv1Adapter
 from verifiers.v1.gepa.config import GEPAConfig
-from verifiers.v1.gepa.output import gepa_output_path
 from verifiers.v1.gepa.runner import run_gepa
 
-__all__ = ["GEPAv1Adapter", "GEPAConfig", "gepa_output_path", "run_gepa"]
+__all__ = ["GEPAv1Adapter", "GEPAConfig", "run_gepa"]
