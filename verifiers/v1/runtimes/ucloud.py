@@ -117,7 +117,8 @@ class UCloudRuntime(Runtime):
                         body = cast(dict[str, object], e.body) if isinstance(e.body, dict) else {}
                         message = str(body.get("error") or "").lower()
                         pending = (
-                            "pending_resources" in body
+                            body.get("retryable") is True
+                            or "pending_resources" in body
                             or "pending_image_builds" in body
                             or "no ready node" in message
                             or "no ready builder" in message
