@@ -17,12 +17,11 @@ from pydantic_config import BaseConfig
 
 from verifiers.v1.errors import SandboxError
 from verifiers.v1.runtimes.base import BaseRuntimeInfo, ProgramResult, Runtime
-from verifiers.v1.runtimes.limiters import creation_limiter
+from verifiers.v1.runtimes.limiters import CapacityLease, capacity_limiter, creation_limiter
 
 logger = logging.getLogger(__name__)
 
 TRANSFER_DIR = "/workspace/.vf-transfers"
-_sandbox_semaphores: dict[int, asyncio.Semaphore] = {}
 
 if TYPE_CHECKING:
     from ucloud_sandboxes_sdk import AsyncSandboxClient, AsyncSandboxHandle
@@ -63,7 +62,7 @@ class UCloudRuntime(Runtime):
         self.info = UCloudRuntimeInfo(**config.model_dump())
         self._client: AsyncSandboxClient | None = None
         self._sandbox: AsyncSandboxHandle | None = None
-        self._capacity_acquired = False
+        self._capacity_lease: CapacityLease | None = None
         self._creation_requested = False
         self._started_at = time.monotonic()
         self._timings: dict[str, float] = {}
@@ -96,17 +95,13 @@ class UCloudRuntime(Runtime):
         limit = self.config.max_concurrent_sandboxes
         if limit is None:
             return
-        semaphore = _sandbox_semaphores.setdefault(limit, asyncio.Semaphore(limit))
-        await semaphore.acquire()
-        self._capacity_acquired = True
+        self._capacity_lease = await capacity_limiter(limit, "ucloud-sandbox").acquire()
 
     def _release_capacity(self) -> None:
-        if not self._capacity_acquired:
+        if self._capacity_lease is None:
             return
-        limit = self.config.max_concurrent_sandboxes
-        assert limit is not None
-        _sandbox_semaphores[limit].release()
-        self._capacity_acquired = False
+        self._capacity_lease.release()
+        self._capacity_lease = None
 
     async def start(self) -> None:
         from aiohttp import ClientError
