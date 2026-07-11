@@ -1,0 +1,17 @@
+[project]
+name = "reasoning-gym-v1"
+description = "Reasoning Gym procedural generators as a native Verifiers v1 taskset."
+tags = ["reasoning-gym", "procedural", "reasoning", "deterministic", "v1"]
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "verifiers>=0.1.15.dev443",
+    "reasoning-gym>=0.1.25",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["reasoning_gym_v1"]
