@@ -17,7 +17,7 @@ from pydantic_config import BaseConfig
 
 from verifiers.v1.errors import SandboxError
 from verifiers.v1.runtimes.base import BaseRuntimeInfo, ProgramResult, Runtime
-from verifiers.v1.runtimes.limiters import CapacityLease, capacity_limiter, creation_limiter
+from verifiers.v1.runtimes.limiters import creation_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,6 @@ class UCloudConfig(BaseConfig):
     start_timeout_seconds: float = 1800.0
     retry_interval_seconds: float = 10.0
     creates_per_min: int | None = None
-    max_concurrent_sandboxes: int | None = Field(128, gt=0)
 
 
 class UCloudRuntimeInfo(UCloudConfig, BaseRuntimeInfo):
@@ -62,7 +61,6 @@ class UCloudRuntime(Runtime):
         self.info = UCloudRuntimeInfo(**config.model_dump())
         self._client: AsyncSandboxClient | None = None
         self._sandbox: AsyncSandboxHandle | None = None
-        self._capacity_lease: CapacityLease | None = None
         self._creation_requested = False
         self._started_at = time.monotonic()
         self._timings: dict[str, float] = {}
@@ -91,17 +89,6 @@ class UCloudRuntime(Runtime):
         prefix = re.sub(r"[^a-zA-Z0-9_-]+", "-", self.config.name_prefix).strip("-_")
         return f"{prefix}-{self.name}" if prefix else self.name
 
-    async def _acquire_capacity(self) -> None:
-        limit = self.config.max_concurrent_sandboxes
-        if limit is None:
-            return
-        self._capacity_lease = await capacity_limiter(limit, "ucloud-sandbox").acquire()
-
-    def _release_capacity(self) -> None:
-        if self._capacity_lease is None:
-            return
-        self._capacity_lease.release()
-        self._capacity_lease = None
 
     async def start(self) -> None:
         from aiohttp import ClientError
@@ -120,9 +107,6 @@ class UCloudRuntime(Runtime):
         )
         self._client = client
         try:
-            capacity_started_at = time.monotonic()
-            await self._acquire_capacity()
-            self._add_timing("capacity_wait", capacity_started_at)
             limiter_started_at = time.monotonic()
             async with (
                 creation_limiter((self.config.creates_per_min or 0) / 60, "ucloud-sandbox") or contextlib.nullcontext()
@@ -387,7 +371,6 @@ class UCloudRuntime(Runtime):
             if client is not None:
                 with contextlib.suppress(Exception):
                     await client.close()
-            self._release_capacity()
         self._add_timing("teardown", teardown_started_at)
         timings = " ".join(f"{name}={value:.1f}s" for name, value in sorted(self._timings.items()))
         counts = " ".join(f"{name}={value}" for name, value in sorted(self._counts.items()))

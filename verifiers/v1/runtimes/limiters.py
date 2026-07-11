@@ -14,7 +14,6 @@ import tempfile
 import time
 
 _LIMITER_DIR = os.path.join(tempfile.gettempdir(), "vf-rate-limiters")
-_CAPACITY_DIR = os.path.join(tempfile.gettempdir(), "vf-capacity-limiters")
 
 
 class CreationLimiter:
@@ -55,49 +54,9 @@ class CreationLimiter:
         return False
 
 
-class CapacityLease:
-    def __init__(self, fd: int) -> None:
-        self._fd = fd
-
-    def release(self) -> None:
-        if self._fd < 0:
-            return
-        fcntl.flock(self._fd, fcntl.LOCK_UN)
-        os.close(self._fd)
-        self._fd = -1
-
-
-class CapacityLimiter:
-    """Host-global concurrent lifecycle limit backed by advisory file locks."""
-
-    def __init__(self, name: str, capacity: int) -> None:
-        self._capacity = capacity
-        self._directory = os.path.join(_CAPACITY_DIR, name)
-
-    def _try_acquire(self) -> CapacityLease | None:
-        os.makedirs(self._directory, exist_ok=True)
-        for slot in range(self._capacity):
-            fd = os.open(os.path.join(self._directory, str(slot)), os.O_CREAT | os.O_RDWR, 0o600)
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                os.close(fd)
-                continue
-            return CapacityLease(fd)
-        return None
-
-    async def acquire(self) -> CapacityLease:
-        while True:
-            lease = await asyncio.to_thread(self._try_acquire)
-            if lease is not None:
-                return lease
-            await asyncio.sleep(0.1)
-
-
 _creation_limiters: dict[str, CreationLimiter] = {}
 
 
-_capacity_limiters: dict[tuple[str, int], CapacityLimiter] = {}
 def creation_limiter(per_sec: float | None, name: str) -> CreationLimiter | None:
     """A host-global limiter pacing `name`'s creation to `per_sec`/s (None/<= 0 disables).
 
@@ -111,15 +70,6 @@ def creation_limiter(per_sec: float | None, name: str) -> CreationLimiter | None
 
 
 # The prime_tunnel service caps tunnel starts at 512/min per API token — a property of the
-
-def capacity_limiter(capacity: int, name: str) -> CapacityLimiter:
-    """A host-global limiter holding at most ``capacity`` concurrent leases for ``name``."""
-    key = (name, capacity)
-    limiter = _capacity_limiters.get(key)
-    if limiter is None:
-        limiter = _capacity_limiters[key] = CapacityLimiter(name, capacity)
-    return limiter
-
 # tunnel service, shared by every runtime that opens a prime_tunnel (prime AND modal). One
 # host-global limiter, not a per-runtime config knob.
 _TUNNELS_PER_MIN = 512
