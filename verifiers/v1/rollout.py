@@ -185,6 +185,8 @@ class Rollout:
         )
         try:
             session = RolloutSession(ctx, trace, stops, self.limits)
+            async with boundary(TaskError, "task preparation"):
+                await self.task.prepare()
             if self._borrowed_runtime is None:
                 await runtime.start()
             # Task setup and harness provisioning share one setup-stage deadline.

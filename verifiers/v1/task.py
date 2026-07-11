@@ -250,6 +250,10 @@ class Task(Generic[DataT, StateT, ConfigT]):
         cls = type(self).user
         return cls(self.server_config(cls)) if cls is not None else None
 
+    async def prepare(self) -> None:
+        """Prepare external resources needed before runtime provisioning."""
+        return None
+
     async def setup(self, trace: Trace, runtime: Runtime) -> None:
         return None
 

@@ -336,6 +336,7 @@ class Agent:
         if task is None:
             config = self.runtime_config
         else:
+            await task.prepare()
             config = self.runtime_for(task)
             self._validate_pairing(task, config)
         runtime = make_runtime(config)
