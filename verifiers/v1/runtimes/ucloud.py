@@ -22,6 +22,7 @@ from verifiers.v1.runtimes.limiters import creation_limiter
 logger = logging.getLogger(__name__)
 
 TRANSFER_DIR = "/workspace/.vf-transfers"
+_sandbox_semaphores: dict[int, asyncio.Semaphore] = {}
 
 if TYPE_CHECKING:
     from ucloud_sandboxes_sdk import AsyncSandboxClient, AsyncSandboxHandle
@@ -46,6 +47,7 @@ class UCloudConfig(BaseConfig):
     start_timeout_seconds: float = 1800.0
     retry_interval_seconds: float = 10.0
     creates_per_min: int | None = None
+    max_concurrent_sandboxes: int | None = Field(128, gt=0)
 
 
 class UCloudRuntimeInfo(UCloudConfig, BaseRuntimeInfo):
@@ -61,6 +63,7 @@ class UCloudRuntime(Runtime):
         self.info = UCloudRuntimeInfo(**config.model_dump())
         self._client: AsyncSandboxClient | None = None
         self._sandbox: AsyncSandboxHandle | None = None
+        self._capacity_acquired = False
         self._started_at = time.monotonic()
         self._timings: dict[str, float] = {}
         self._counts: dict[str, int] = {}
@@ -88,6 +91,22 @@ class UCloudRuntime(Runtime):
         prefix = re.sub(r"[^a-zA-Z0-9_-]+", "-", self.config.name_prefix).strip("-_")
         return f"{prefix}-{self.name}" if prefix else self.name
 
+    async def _acquire_capacity(self) -> None:
+        limit = self.config.max_concurrent_sandboxes
+        if limit is None:
+            return
+        semaphore = _sandbox_semaphores.setdefault(limit, asyncio.Semaphore(limit))
+        await semaphore.acquire()
+        self._capacity_acquired = True
+
+    def _release_capacity(self) -> None:
+        if not self._capacity_acquired:
+            return
+        limit = self.config.max_concurrent_sandboxes
+        assert limit is not None
+        _sandbox_semaphores[limit].release()
+        self._capacity_acquired = False
+
     async def start(self) -> None:
         from aiohttp import ClientError
         from ucloud_sandboxes_sdk import (
@@ -105,6 +124,9 @@ class UCloudRuntime(Runtime):
         )
         self._client = client
         try:
+            capacity_started_at = time.monotonic()
+            await self._acquire_capacity()
+            self._add_timing("capacity_wait", capacity_started_at)
             limiter_started_at = time.monotonic()
             async with (
                 creation_limiter((self.config.creates_per_min or 0) / 60, "ucloud-sandbox") or contextlib.nullcontext()
@@ -341,8 +363,6 @@ class UCloudRuntime(Runtime):
                 await self.run(["rm", "-f", staged], {})
 
     def cleanup(self) -> None:
-        if self.info.id is None:
-            return
         from ucloud_sandboxes_sdk import SandboxClient
 
         with contextlib.suppress(Exception):
@@ -350,21 +370,25 @@ class UCloudRuntime(Runtime):
                 self._base_url(),
                 api_token=os.environ.get("UCLOUD_SANDBOX_API_TOKEN"),
                 timeout_seconds=self.config.request_timeout_seconds,
-            ).delete_sandbox(self.info.id)
+            ).delete_sandbox(self.info.id or self._sandbox_id())
 
     async def teardown(self) -> None:
         client, self._client = self._client, None
         teardown_started_at = time.monotonic()
         sandbox, self._sandbox = self._sandbox, None
-        if client is None:
-            return
-        if sandbox is not None:
-            try:
+        try:
+            if client is not None and sandbox is not None:
                 await sandbox.delete()
-            except Exception as e:
+            elif client is not None:
+                await client.delete_sandbox(self.info.id or self._sandbox_id())
+        except Exception as e:
+            if client is not None:
                 logger.warning("ucloud: failed to delete sandbox %s: %s", self.info.id, e)
-        with contextlib.suppress(Exception):
-            await client.close()
+        finally:
+            if client is not None:
+                with contextlib.suppress(Exception):
+                    await client.close()
+            self._release_capacity()
         self._add_timing("teardown", teardown_started_at)
         timings = " ".join(f"{name}={value:.1f}s" for name, value in sorted(self._timings.items()))
         counts = " ".join(f"{name}={value}" for name, value in sorted(self._counts.items()))
