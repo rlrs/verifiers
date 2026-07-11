@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 import shlex
 import time
 import uuid
@@ -37,6 +38,7 @@ class UCloudConfig(BaseConfig):
     tmpfs_mb: int = 64
     ttl_seconds: int = 3600
     command: list[str] = Field(default_factory=lambda: ["sleep", "infinity"])
+    name_prefix: str | None = None
     labels: dict[str, str] = Field(default_factory=dict)
     user: str | None = None
     base_url: str | None = None
@@ -80,6 +82,12 @@ class UCloudRuntime(Runtime):
             raise SandboxError("ucloud sandbox has not been started")
         return self._sandbox
 
+    def _sandbox_id(self) -> str:
+        if self.config.name_prefix is None:
+            return self.name
+        prefix = re.sub(r"[^a-zA-Z0-9_-]+", "-", self.config.name_prefix).strip("-_")
+        return f"{prefix}-{self.name}" if prefix else self.name
+
     async def start(self) -> None:
         from aiohttp import ClientError
         from ucloud_sandboxes_sdk import (
@@ -110,7 +118,7 @@ class UCloudRuntime(Runtime):
                         raise TimeoutError("timed out waiting for UCloud sandbox node readiness")
                     try:
                         sandbox = await client.create_sandbox(
-                            id=self.name,
+                            id=self._sandbox_id(),
                             image=Image.from_registry(self.config.image),
                             command=self.config.command,
                             working_dir=self.config.workdir,
