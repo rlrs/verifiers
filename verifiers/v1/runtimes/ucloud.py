@@ -64,6 +64,7 @@ class UCloudRuntime(Runtime):
         self._client: AsyncSandboxClient | None = None
         self._sandbox: AsyncSandboxHandle | None = None
         self._capacity_acquired = False
+        self._creation_requested = False
         self._started_at = time.monotonic()
         self._timings: dict[str, float] = {}
         self._counts: dict[str, int] = {}
@@ -139,6 +140,7 @@ class UCloudRuntime(Runtime):
                     if remaining <= 0:
                         raise TimeoutError("timed out waiting for UCloud sandbox node readiness")
                     try:
+                        self._creation_requested = True
                         sandbox = await client.create_sandbox(
                             id=self._sandbox_id(),
                             image=Image.from_registry(self.config.image),
@@ -363,6 +365,8 @@ class UCloudRuntime(Runtime):
                 await self.run(["rm", "-f", staged], {})
 
     def cleanup(self) -> None:
+        if self.info.id is None and not self._creation_requested:
+            return
         from ucloud_sandboxes_sdk import SandboxClient
 
         with contextlib.suppress(Exception):
@@ -379,7 +383,7 @@ class UCloudRuntime(Runtime):
         try:
             if client is not None and sandbox is not None:
                 await sandbox.delete()
-            elif client is not None:
+            elif client is not None and self._creation_requested:
                 await client.delete_sandbox(self.info.id or self._sandbox_id())
         except Exception as e:
             if client is not None:
