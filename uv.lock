@@ -6152,6 +6152,25 @@ wheels = [
 ]
 
 [[package]]
+name = "ucloud-sandboxes-sdk"
+version = "0.4.0"
+source = { url = "https://github.com/rlrs/ucloud-sandboxes-sdk/archive/baf0021.tar.gz" }
+sdist = { hash = "sha256:6275052f92dec45b203967dcbfc3717416faa8856c1cd45a20b58400c63f95fd" }
+
+[package.optional-dependencies]
+async = [
+    { name = "aiohttp" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", marker = "extra == 'async'", specifier = ">=3.10,<4" },
+    { name = "aiohttp", marker = "extra == 'inspect'", specifier = ">=3.10,<4" },
+    { name = "inspect-ai", marker = "extra == 'inspect'", specifier = ">=0.3.240,<0.4" },
+]
+provides-extras = ["async", "inspect"]
+
+[[package]]
 name = "urllib3"
 version = "2.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -6281,6 +6300,9 @@ ta = [
     { name = "nltk" },
     { name = "textarena" },
 ]
+ucloud = [
+    { name = "ucloud-sandboxes-sdk", extra = ["async"] },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -6366,11 +6388,12 @@ requires-dist = [
     { name = "torch", marker = "extra == 'rl'", specifier = ">=2.8.0,<2.9.0" },
     { name = "transformers", marker = "extra == 'rl'", specifier = ">=4.56.2" },
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "ucloud-sandboxes-sdk", extras = ["async"], marker = "extra == 'ucloud'", url = "https://github.com/rlrs/ucloud-sandboxes-sdk/archive/baf0021.tar.gz" },
     { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'", specifier = ">=0.21.0" },
     { name = "vllm", marker = "extra == 'rl'", specifier = ">=0.10.0,<0.11.0" },
     { name = "wandb", marker = "extra == 'rl'" },
 ]
-provides-extras = ["browser", "harbor", "modal", "notebook", "quest", "rg", "rl", "ta"]
+provides-extras = ["browser", "harbor", "modal", "notebook", "quest", "rg", "rl", "ta", "ucloud"]
 
 [package.metadata.requires-dev]
 dev = [

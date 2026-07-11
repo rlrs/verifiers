@@ -86,6 +86,9 @@ examples = [
 ]
 
 [project.optional-dependencies]
+ucloud = [
+    "ucloud-sandboxes-sdk[async] @ https://github.com/rlrs/ucloud-sandboxes-sdk/archive/baf0021.tar.gz",
+]
 rg = [
     "reasoning-gym",
 ]
@@ -187,6 +190,9 @@ vf-tui = "verifiers.scripts.tui:main"
 # hatchling configuration
 [tool.hatch.version]
 source = "vcs"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 # Resolve a version when building without VCS metadata (e.g. the prime-rl
 # Docker build copies the source but not a usable .git for the submodule).
 # Mirrors renderers; without it hatch-vcs raises LookupError and the editable

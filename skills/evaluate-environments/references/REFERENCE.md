@@ -10,7 +10,7 @@ EvalConfig                       (the run + the env)
 ├─ taskset: TasksetConfig        (subclass resolved by --taskset.id)
 │  └─ task: TaskConfig           (judges, scoring knobs, task-scoped server config)
 ├─ harness: HarnessConfig        (subclass resolved by --harness.id)
-│  └─ runtime: RuntimeConfig     (subprocess | docker | prime | modal)
+│  └─ runtime: RuntimeConfig     (subprocess | docker | prime | modal | ucloud)
 ├─ timeout: TimeoutConfig
 ├─ retries: RetryConfig
 │  └─ rollout: RolloutRetryConfig
@@ -349,6 +349,7 @@ Remote Prime sandbox; reached via native port exposure.
 | `memory` | `float` | `2.0` | Memory in GB. |
 | `gpu` | `str \| None` | `None` | GPU spec, e.g. `"A100"` or `"A100:2"` (bare count = provider-chosen type). |
 | `disk` | `float` | `5.0` | Disk in GB. |
+| `tmpfs_mb` | `int` | `64` | Size of `/tmp`; uCloud tool venvs use executable disk-backed `/workspace`. |
 | `idle_timeout` | `float \| None` | `3600` | Seconds of inactivity before the sandbox is deleted; `None` disables it. |
 | `creates_per_min` | `int \| None` | `None` | Pace sandbox creation to this many per minute, host-wide across every env-server worker (None/≤0 disables). Tunnel creation is limited separately and globally. |
 
@@ -366,6 +367,28 @@ Remote Modal sandbox; reached via Modal's own port forwarding (`encrypted_ports`
 | `gpu` | `str \| None` | `None` | GPU spec, e.g. `"A100"` or `"A100:2"`. |
 | `disk` | `float` | `5.0` | Disk in GB. Modal sandboxes have no disk knob, so **accepted but not enforced**. |
 | `creates_per_sec` | `float \| None` | `40.0` | Pace sandbox creation to this many per second, host-wide across every env-server worker (None/≤0 disables). |
+
+### `UCloudConfig` — `type: "ucloud"`
+Remote sandbox managed through a UCloud sandbox gateway. Install `verifiers[ucloud]`. Set `UCLOUD_SANDBOX_URL`
+and `UCLOUD_SANDBOX_API_TOKEN`; `base_url` can replace the URL environment variable.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `image` | `str` | `"python:3.12-slim"` | Registry image. |
+| `workdir` | `str` | `"/app"` | Working directory. |
+| `network` | `"none" \| "bridge" \| "host"` | `"bridge"` | Sandbox network mode. |
+| `cpu` | `float` | `1.0` | CPU cores. |
+| `memory` | `float` | `2.0` | Memory in GB. |
+| `disk` | `float` | `5.0` | Disk in GB. |
+| `ttl_seconds` | `int` | `3600` | Provider-side cleanup bound. |
+| `command` | `list[str]` | `["sleep", "infinity"]` | Sandbox keepalive command. |
+| `labels` | `dict[str, str]` | `{}` | Labels attached to the sandbox. |
+| `user` | `str \| None` | `None` | Container user; `None` uses the image default while retaining the SDK's other security defaults. |
+| `base_url` | `str \| None` | `None` | Gateway URL; otherwise read from the environment. |
+| `request_timeout_seconds` | `float` | `30.0` | Gateway request timeout. |
+| `start_timeout_seconds` | `float` | `1800.0` | Total budget for waiting on sandbox-node scale-up. |
+| `retry_interval_seconds` | `float` | `10.0` | Delay between scale-up retries. |
+| `creates_per_min` | `int \| None` | `None` | Pace sandbox creation host-wide (None/≤0 disables). |
 
 Before each rollout or validation check, `resolve_runtime_config` combines the selected runtime
 config with the row's `TaskData`:
@@ -638,7 +661,7 @@ log line per task.
   The setup value is one deadline shared by task setup and harness provisioning.
   Validate uses `CheckTimeoutConfig.setup`, then falls back to `TaskData.timeout.setup`, while
   `CheckTimeoutConfig.total` independently bounds `Task.validate`.
-- **Discriminated unions** are selected by their `type` field: `client.type` (eval|train), `pool.type` (static|elastic), `harness.runtime.type` / `runtime.type` (subprocess|docker|prime|modal).
+- **Discriminated unions** are selected by their `type` field: `client.type` (eval|train), `pool.type` (static|elastic), `harness.runtime.type` / `runtime.type` (subprocess|docker|prime|modal|ucloud).
 - **Frozen models.** `TaskData`, `TaskResources`, and `TaskTimeout` are immutable wire input, not
   mutable runtime state. Put per-rollout coordination on typed `trace.state`. `RolloutLimits` is an
   immutable framework limit derived from `EnvConfig`.

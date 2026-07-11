@@ -83,6 +83,7 @@ from verifiers.v1.runtimes import (
     RuntimeConfig,
     RuntimeInfo,
     SubprocessConfig,
+    UCloudConfig,
 )
 from verifiers.v1.scoring import (
     compare_stdout_results as compare_stdout_results,
@@ -236,6 +237,7 @@ __all__ = [
     "SubprocessConfig",
     "DockerConfig",
     "PrimeConfig",
+    "UCloudConfig",
     "EnvConfig",
     "EnvServerConfig",
     "StaticPoolConfig",

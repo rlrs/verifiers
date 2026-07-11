@@ -33,6 +33,7 @@ async def _channel_request(
     *,
     content: bytes | None = None,
     client: AsyncClient | None = None,
+    relay_token: str | None = None,
 ) -> Response:
     """Retry tunnel transport errors and 5xx responses, but not invalid 4xx requests."""
     import httpx
@@ -49,18 +50,14 @@ async def _channel_request(
         )
 
     async def request() -> Response:
-        manager = (
-            contextlib.nullcontext(client)
-            if client is not None
-            else httpx.AsyncClient(timeout=STATE_TIMEOUT)
-        )
+        manager = contextlib.nullcontext(client) if client is not None else httpx.AsyncClient(timeout=STATE_TIMEOUT)
         async with manager as request_client:
             headers = {"Authorization": f"Bearer {secret}"}
+            if relay_token:
+                headers["X-UCloud-Relay-Token"] = relay_token
             if content is not None:
                 headers["Content-Type"] = "application/json"
-            resp = await request_client.request(
-                method, url, content=content, headers=headers
-            )
+            resp = await request_client.request(method, url, content=content, headers=headers)
             resp.raise_for_status()
             return resp
 
@@ -76,11 +73,10 @@ async def _channel_request(
 # process cannot carry a single rollout's channel in its environment.
 STATE_URL_PARAM = "vf_state_url"
 STATE_SECRET_PARAM = "vf_state_secret"
+STATE_RELAY_TOKEN_PARAM = "vf_state_relay_token"
 
 # A context variable isolates the state seen by concurrent calls on one shared server.
-_call_state: contextvars.ContextVar[State | None] = contextvars.ContextVar(
-    "vf_call_state", default=None
-)
+_call_state: contextvars.ContextVar[State | None] = contextvars.ContextVar("vf_call_state", default=None)
 
 
 def _request_query(name: str) -> str | None:
@@ -128,29 +124,26 @@ class ServerBase(Generic[ConfigT, StateT]):
         current = _call_state.get()
         return current if current is not None else self._inert_state  # type: ignore[return-value]
 
-    def _state_channel(self) -> tuple[str | None, str]:
+    def _state_channel(self) -> tuple[str | None, str, str | None]:
         """Prefer per-call coordinates for shared servers, then the process environment."""
         url = _request_query(STATE_URL_PARAM) or os.environ.get("VF_STATE_URL")
-        secret = _request_query(STATE_SECRET_PARAM) or os.environ.get(
-            "VF_STATE_SECRET", ""
-        )
-        return url, secret
+        secret = _request_query(STATE_SECRET_PARAM) or os.environ.get("VF_STATE_SECRET", "")
+        relay_token = _request_query(STATE_RELAY_TOKEN_PARAM) or os.environ.get("VF_STATE_RELAY_TOKEN")
+        return url, secret, relay_token
 
     async def _pull_state(self) -> State:
-        url, secret = self._state_channel()
+        url, secret, relay_token = self._state_channel()
         if not url:
             return self._state_cls()
-        response = await _channel_request("GET", url, secret, client=self._state_client)
+        response = await _channel_request("GET", url, secret, client=self._state_client, relay_token=relay_token)
         try:
             return self._state_adapter.validate_json(response.content)
         except ValidationError as e:
-            logger.warning(
-                "state pull rejected for %s: %s", self._state_cls.__name__, e
-            )
+            logger.warning("state pull rejected for %s: %s", self._state_cls.__name__, e)
             raise
 
     async def _push_state(self, before: bytes) -> None:
-        url, secret = self._state_channel()
+        url, secret, relay_token = self._state_channel()
         if not url:
             return
         state = _call_state.get()
@@ -159,25 +152,24 @@ class ServerBase(Generic[ConfigT, StateT]):
         if after == before:
             return
         await _channel_request(
-            "PUT", url, secret, content=after, client=self._state_client
+            "PUT",
+            url,
+            secret,
+            content=after,
+            client=self._state_client,
+            relay_token=relay_token,
         )
 
-    async def _fetch_task(self, state_url: str | None, secret: str):
+    async def _fetch_task(self, state_url: str | None, secret: str, relay_token: str | None):
         """Fetch the rollout task; shared task-agnostic servers have no task channel."""
         if not state_url:
             return None
-        task_url = (
-            state_url[: -len("/state")] + "/task"
-            if state_url.endswith("/state")
-            else state_url
-        )
-        data = (await _channel_request("GET", task_url, secret)).json()
+        task_url = state_url[: -len("/state")] + "/task" if state_url.endswith("/state") else state_url
+        data = (await _channel_request("GET", task_url, secret, relay_token=relay_token)).json()
         return _import_ref(data["cls"]).model_validate_json(data["task"])
 
-    async def _setup_task_from_channel(
-        self, state_url: str | None, secret: str
-    ) -> None:
-        task = await self._fetch_task(state_url, secret)
+    async def _setup_task_from_channel(self, state_url: str | None, secret: str, relay_token: str | None) -> None:
+        task = await self._fetch_task(state_url, secret, relay_token)
         if task is not None:
             await self.setup_task(task)
 
@@ -211,9 +203,9 @@ class ServerBase(Generic[ConfigT, StateT]):
 
     @property
     def server_name(self) -> str:
-        return self.TOOL_PREFIX or "".join(
-            ("_" + c.lower() if c.isupper() else c) for c in type(self).__name__
-        ).lstrip("_")
+        return self.TOOL_PREFIX or "".join(("_" + c.lower() if c.isupper() else c) for c in type(self).__name__).lstrip(
+            "_"
+        )
 
     async def setup(self) -> None:
         """Initialize task-agnostic server state."""
@@ -286,9 +278,7 @@ class ServerBase(Generic[ConfigT, StateT]):
         """Resolve the server's config specialization through its MRO."""
         if config_cls := generic_type(cls, BaseConfig):
             return config_cls
-        raise TypeError(
-            f"{cls.__name__} must parameterize its config, e.g. Toolset[MyConfig]"
-        )
+        raise TypeError(f"{cls.__name__} must parameterize its config, e.g. Toolset[MyConfig]")
 
     @classmethod
     def run(cls) -> None:

@@ -63,9 +63,12 @@ class InterceptionPool:
         await self._stack.enter_async_context(server)
         # The interception server is a HOST service the harness reaches: localhost for a local
         # harness runtime, a tunnel for a remote one. Owned by the pool's stack, torn down with it.
-        url = await self._stack.enter_async_context(
-            reachable_url(HOST, server.port, consumer_is_local=self.is_local)
-        )
+        if self.runtime_type == "ucloud":
+            url = f"http://127.0.0.1:{server.port}"
+        else:
+            url = await self._stack.enter_async_context(
+                reachable_url(HOST, server.port, consumer_is_local=self.is_local)
+            )
         entry = PooledServer(server, url)
         self._servers.append(entry)
         logger.info(

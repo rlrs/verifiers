@@ -3,7 +3,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from verifiers.v1.clients import ModelContext
 from verifiers.v1.decorators import discover_decorated, invoke
@@ -26,6 +26,8 @@ from verifiers.v1.runtimes import (
     HOST,
     Runtime,
     RuntimeConfig,
+    RuntimeInfo,
+    UCloudRuntime,
     make_runtime,
     reachable_url,
 )
@@ -103,13 +105,45 @@ class Rollout:
                 state_port,
                 state_base,
             ):
-                yield endpoint, secret, state_port, state_base
+                if isinstance(runtime, UCloudRuntime):
+                    async with runtime.relay_endpoint(state_port, secret) as (
+                        relay_endpoint,
+                        relay_secret,
+                        relay_state_base,
+                        relay_state_token,
+                    ):
+                        yield (
+                            relay_endpoint,
+                            relay_secret,
+                            state_port,
+                            relay_state_base,
+                            secret,
+                            relay_state_token,
+                        )
+                else:
+                    yield endpoint, secret, state_port, state_base, secret, None
         else:
             async with InterceptionServer() as server:
                 secret = server.register(session)
-                # The runtime reaches this host service through localhost or a tunnel.
-                async with reachable_url(HOST, server.port, consumer=runtime) as url:
-                    yield f"{url}/v1", secret, server.port, url
+                if isinstance(runtime, UCloudRuntime):
+                    async with runtime.relay_endpoint(server.port, secret) as (
+                        endpoint,
+                        relay_secret,
+                        relay_state_base,
+                        relay_state_token,
+                    ):
+                        yield (
+                            endpoint,
+                            relay_secret,
+                            server.port,
+                            relay_state_base,
+                            secret,
+                            relay_state_token,
+                        )
+                else:
+                    # The runtime reaches this host service through localhost or a tunnel.
+                    async with reachable_url(HOST, server.port, consumer=runtime) as url:
+                        yield f"{url}/v1", secret, server.port, url, secret, None
 
     async def run(self) -> Trace:
         """Run the rollout and return its trace. Captures expected `RolloutError`s onto
@@ -139,7 +173,7 @@ class Rollout:
             else make_runtime(self.runtime_config, name=trace.id)
         )
         runtime = self.runtime
-        trace.runtime = runtime.info
+        trace.runtime = cast(RuntimeInfo, runtime.info)
         ctx = self.ctx
         stops = discover_decorated(self.task, "stop")
         logger.info(
@@ -155,9 +189,7 @@ class Rollout:
                 await runtime.start()
             # Task setup and harness provisioning share one setup-stage deadline.
             setup_deadline = (
-                None
-                if self.setup_timeout is None
-                else asyncio.get_running_loop().time() + self.setup_timeout
+                None if self.setup_timeout is None else asyncio.get_running_loop().time() + self.setup_timeout
             )
             async with (
                 boundary(TaskError, "task setup"),
@@ -169,13 +201,13 @@ class Rollout:
                 asyncio.timeout_at(setup_deadline),
             ):
                 await self.harness.setup(runtime)
-            async with self._serve_interception(
-                self.interception, runtime, session
-            ) as (
+            async with self._serve_interception(self.interception, runtime, session) as (
                 endpoint,
                 secret,
                 state_port,
                 state_base,
+                state_secret,
+                state_relay_token,
             ):
                 async with boundary(ToolsetError, "building tool servers"):
                     tool_servers = self.task.tool_servers()
@@ -185,20 +217,20 @@ class Rollout:
                         runtime,
                         shared=self.shared_tools,
                         state_port=state_port,
-                        state_secret=secret,
+                        state_secret=state_secret,
                         state_base=state_base,
+                        state_relay_token=state_relay_token,
                     ) as urls,
                     serve_user(
                         None if self._user is not None else self.task.user_server(),
                         harness_runtime=runtime,
                         state_port=state_port,
-                        state_secret=secret,
+                        state_secret=state_secret,
                         state_base=state_base,
+                        state_relay_token=state_relay_token,
                     ) as launched_user,
                 ):
-                    session.user = (
-                        self._user if self._user is not None else launched_user
-                    )
+                    session.user = self._user if self._user is not None else launched_user
                     if self.task.data.prompt is None and session.user is None:
                         raise TaskError(
                             "task has no prompt and no user simulator to open the "
@@ -213,9 +245,7 @@ class Rollout:
                     # A timeout still scores the partial trajectory.
                     try:
                         await asyncio.wait_for(
-                            self.harness.run(
-                                ctx, trace, runtime, endpoint, secret, urls
-                            ),
+                            self.harness.run(ctx, trace, runtime, endpoint, secret, urls),
                             self.harness_timeout,
                         )
                     except TimeoutError:
@@ -277,9 +307,7 @@ class Rollout:
                 try:
                     await runtime.stop()
                 except Exception:
-                    logger.warning(
-                        "runtime teardown failed (rollout %s)", trace.id, exc_info=True
-                    )
+                    logger.warning("runtime teardown failed (rollout %s)", trace.id, exc_info=True)
             self.phase = Phase.DONE
         logger.info(
             "rollout done: id=%s task=%s reward=%.3f turns=%d stop=%s",

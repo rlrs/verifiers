@@ -18,7 +18,12 @@ from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from verifiers.v1.errors import RolloutError, ToolsetError, UserError
-from verifiers.v1.mcp.server import STATE_SECRET_PARAM, STATE_URL_PARAM, ServerBase
+from verifiers.v1.mcp.server import (
+    STATE_RELAY_TOKEN_PARAM,
+    STATE_SECRET_PARAM,
+    STATE_URL_PARAM,
+    ServerBase,
+)
 from verifiers.v1.runtimes import (
     HOST,
     Runtime,
@@ -116,11 +121,12 @@ async def _install_in_sandbox(server: ServerBase, runtime: Runtime) -> str:
             f"server {server.server_name!r} runs in a {runtime.type} runtime but its module is not "
             "a local package (no pyproject) — sandbox launch needs a local env package to upload"
         )
-    root = "/tmp/vf-src"
+    scratch = "/workspace/.vf" if runtime.type == "ucloud" else "/tmp"
+    root = f"{scratch}/vf-src"
     vf, env = _verifiers_root(), Path(source_dir)
     await runtime.write(f"{root}/{vf.name}.tar.gz", _tar_source(vf, VF_BUILD_INPUTS))
     await runtime.write(f"{root}/{env.name}.tar.gz", _tar_source(env))
-    venv = "/tmp/vf-venv"
+    venv = f"{scratch}/vf-venv"
     # The upload carries no .git, so hatch-vcs falls back to version 0.0.0 — an env
     # package's `verifiers>=...` floor would then resolve PyPI verifiers OVER the local
     # build, silently running the server against a released (older) API. Pretend the
@@ -128,7 +134,7 @@ async def _install_in_sandbox(server: ServerBase, runtime: Runtime) -> str:
     vf_version = importlib.metadata.version("verifiers")
     setup = (
         f"{_ENSURE_UV}; set -e; "
-        f'for t in {root}/*.tar.gz; do tar -xzf "$t" -C {root}; done && '
+        f'for t in {root}/*.tar.gz; do tar --no-same-owner -xzf "$t" -C {root}; done && '
         f"uv venv {venv} && "
         f"SETUPTOOLS_SCM_PRETEND_VERSION={shlex.quote(vf_version)} "
         f"uv pip install --python {venv} {root}/{shlex.quote(vf.name)} && "
@@ -173,6 +179,7 @@ async def serve_in_runtime(
     exposed: bool,
     state_url: str | None = None,
     state_secret: str = "",
+    state_relay_token: str | None = None,
 ) -> int:
     """Start a server and return its bound port.
 
@@ -184,6 +191,8 @@ async def serve_in_runtime(
     if state_url:
         env["VF_STATE_URL"] = state_url
         env["VF_STATE_SECRET"] = state_secret
+        if state_relay_token:
+            env["VF_STATE_RELAY_TOKEN"] = state_relay_token
     if runtime.published_port is not None:
         env["MCP_HOST"] = "0.0.0.0"
     fixed = runtime.published_port if exposed else None
@@ -206,13 +215,9 @@ async def serve_in_runtime(
             port = await _read_back_port(runtime, port_file)
         except ToolsetError as e:
             raise ToolsetError(f"{e}: {await log_tail(runtime, log)}") from e
-    probe = await runtime.run(
-        ["python3", "-c", _PROBE, f"http://127.0.0.1:{port}/mcp"], {}
-    )
+    probe = await runtime.run(["python3", "-c", _PROBE, f"http://127.0.0.1:{port}/mcp"], {})
     if probe.exit_code != 0:
-        raise ToolsetError(
-            f"tool server {server.server_name!r} not serving in runtime: {await log_tail(runtime, log)}"
-        )
+        raise ToolsetError(f"tool server {server.server_name!r} not serving in runtime: {await log_tail(runtime, log)}")
     return port
 
 
@@ -226,6 +231,7 @@ async def serve(
     state_port: int | None = None,
     state_secret: str = "",
     state_base: str | None = None,
+    state_relay_token: str | None = None,
 ):
     cfg = server.config
     async with contextlib.AsyncExitStack() as stack:
@@ -245,9 +251,7 @@ async def serve(
             if state_base is not None and runtime is harness_runtime:
                 base = state_base
             else:
-                base = await stack.enter_async_context(
-                    reachable_url(HOST, state_port, consumer=runtime)
-                )
+                base = await stack.enter_async_context(reachable_url(HOST, state_port, consumer=runtime))
             state_url = f"{base.rstrip('/')}/state"
         port = await serve_in_runtime(
             server,
@@ -255,13 +259,12 @@ async def serve(
             exposed=exposed,
             state_url=state_url,
             state_secret=state_secret,
+            state_relay_token=state_relay_token,
         )
         # User simulators are host-driven; tool servers are harness-facing.
         consumer = HOST if for_host else harness_runtime
         base = await stack.enter_async_context(
-            reachable_url(
-                runtime, port, consumer=consumer, consumer_is_local=harness_is_local
-            )
+            reachable_url(runtime, port, consumer=consumer, consumer_is_local=harness_is_local)
         )
         yield f"{base.rstrip('/')}/mcp"
 
@@ -309,21 +312,20 @@ async def serve_shared(toolsets: list[Toolset], harness_is_local: bool = True):
                     name,
                 )
             if cfg.url:  # already running remotely; nothing launched, nothing to bridge
-                servers[name] = SharedToolServer(
-                    url=cfg.url, local=False, external=True
-                )
+                servers[name] = SharedToolServer(url=cfg.url, local=False, external=True)
             else:
-                url = await stack.enter_async_context(
-                    serve(toolset, harness_is_local=harness_is_local)
-                )
-                servers[name] = SharedToolServer(
-                    url=url, local=runtime_is_local(cfg.runtime)
-                )
+                url = await stack.enter_async_context(serve(toolset, harness_is_local=harness_is_local))
+                servers[name] = SharedToolServer(url=url, local=runtime_is_local(cfg.runtime))
             logger.info("shared tool server '%s': %s", name, servers[name].url)
         yield servers
 
 
-def _shared_url_for_rollout(url: str, state_base: str | None, state_secret: str) -> str:
+def _shared_url_for_rollout(
+    url: str,
+    state_base: str | None,
+    state_secret: str,
+    state_relay_token: str | None,
+) -> str:
     """Attach one rollout's state bridge to a shared server URL."""
     if not state_base:
         return url
@@ -331,6 +333,8 @@ def _shared_url_for_rollout(url: str, state_base: str | None, state_secret: str)
     query = dict(parse_qsl(parts.query))
     query[STATE_URL_PARAM] = f"{state_base.rstrip('/')}/state"
     query[STATE_SECRET_PARAM] = state_secret
+    if state_relay_token:
+        query[STATE_RELAY_TOKEN_PARAM] = state_relay_token
     return urlunsplit(parts._replace(query=urlencode(query)))
 
 
@@ -343,6 +347,7 @@ async def serve_tools(
     state_port: int | None = None,
     state_secret: str = "",
     state_base: str | None = None,
+    state_relay_token: str | None = None,
 ):
     """Bring up a rollout's tool servers and yield `{name: url}` the harness reaches: the
     task-scoped `toolsets` are launched by `serve` (placement off each one's `config`; the
@@ -368,9 +373,7 @@ async def serve_tools(
                 tool_state_base = await stack.enter_async_context(
                     reachable_url(HOST, state_port, consumer_is_local=False)
                 )
-            urls[name] = _shared_url_for_rollout(
-                server.url, tool_state_base, state_secret
-            )
+            urls[name] = _shared_url_for_rollout(server.url, tool_state_base, state_secret, state_relay_token)
             # The tagged URL contains the bearer secret; log only the untagged base URL.
             logger.info("tool server '%s' (shared): %s", name, server.url)
         for toolset in toolsets:
@@ -392,6 +395,7 @@ async def serve_tools(
                         state_port=state_port,
                         state_secret=state_secret,
                         state_base=state_base,
+                        state_relay_token=state_relay_token,
                     )
                 )
                 logger.info("tool server '%s': %s", name, urls[name])
@@ -423,11 +427,7 @@ async def connect_user(url: str) -> AsyncIterator[Respond]:
 
                 async def respond(message: str) -> Messages:
                     result = await session.call_tool("respond", {"message": message})
-                    texts = [
-                        b.text
-                        for b in result.content
-                        if getattr(b, "type", None) == "text"
-                    ]
+                    texts = [b.text for b in result.content if getattr(b, "type", None) == "text"]
                     data = json.loads("\n".join(texts))
                     return [parse_message(m) for m in data["messages"]]
 
@@ -445,12 +445,8 @@ async def connect_user(url: str) -> AsyncIterator[Respond]:
                 # Raw transport groups bypass rollout handling, so attribute the loss here.
                 raise UserError(f"user server at {url} connection lost: {e!r}") from e
             last_exc = e
-            await asyncio.sleep(
-                min(_USER_CONNECT_BACKOFF * 2**attempt, _USER_CONNECT_MAX_BACKOFF)
-            )
-    raise UserError(
-        f"user server at {url} unreachable after {_USER_CONNECT_ATTEMPTS} attempts: {last_exc!r}"
-    )
+            await asyncio.sleep(min(_USER_CONNECT_BACKOFF * 2**attempt, _USER_CONNECT_MAX_BACKOFF))
+    raise UserError(f"user server at {url} unreachable after {_USER_CONNECT_ATTEMPTS} attempts: {last_exc!r}")
 
 
 @contextlib.asynccontextmanager
@@ -461,6 +457,7 @@ async def serve_user(
     state_port: int | None = None,
     state_secret: str = "",
     state_base: str | None = None,
+    state_relay_token: str | None = None,
 ) -> AsyncIterator[Respond | None]:
     """Bring a rollout's user server up (via the shared `serve` launcher, `for_host=True` since
     the framework drives the user from the HOST) and yield the async `respond` the interception
@@ -479,6 +476,7 @@ async def serve_user(
         state_port=state_port,
         state_secret=state_secret,
         state_base=state_base,
+        state_relay_token=state_relay_token,
     ) as url:
         async with connect_user(url) as respond:
             yield respond

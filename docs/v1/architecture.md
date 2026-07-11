@@ -9,9 +9,11 @@ The orchestrator and workers are managed by verifiers and prime-rl themselves an
 The **rollout** is the executable combination of one loaded task, the harness, and any tools. Each rollout has an independent trace and runtime state. verifiers has three different runtimes which you can use for most environments:
 - The `subprocess` runtime runs the rollouts in Python subprocesses locally. Thus, it is meant for debugging purposes, as there might be side effects during runtime, such as one subprocess altering the config files of the harness, which then affects the other subprocesses.
 - The `docker` runtime runs the rollouts in docker containers on your local machine.
-- Sandbox runtimes, such as `prime` or `modal`, are meant for production, especially for training or higher concurrency evaluation. These runtimes run remotely.
+- Sandbox runtimes, such as `prime`, `modal`, or `ucloud`, are meant for production, especially for training or higher concurrency evaluation. These runtimes run remotely.
 
 The harness runs inside the rollout runtime to interact with the taskset. The harness does _not_ call the provider endpoint directly. Instead, model traffic goes through an **interception server** over a local connection or [Prime Tunnel](https://docs.primeintellect.ai/sandboxes/tunnel).
+
+UCloud rollouts use two authenticated relay channels: the OpenAI-compatible model relay carries `/v1` inference traffic, while the general HTTP tunnel carries Verifiers' `/task` and `/state` control traffic. Keeping the channels separate preserves the interception bearer credential and allows arbitrary HTTP methods on the control channel.
 
 The interception server receives all these requests and then sends them over to the actual API, e.g. the OpenAI responses endpoint. It uses the endpoint that the harness expects, so Codex will use OpenAI Responses, while Claude Code will use the Anthropic Messages API.
 

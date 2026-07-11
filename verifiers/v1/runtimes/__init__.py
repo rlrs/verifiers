@@ -1,6 +1,7 @@
 """Execution runtimes for harnesses."""
 
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, cast
 
 from pydantic import Field
 
@@ -21,14 +22,19 @@ from verifiers.v1.runtimes.subprocess import (
     SubprocessRuntime,
     SubprocessRuntimeInfo,
 )
+from verifiers.v1.runtimes.ucloud import (
+    UCloudConfig,
+    UCloudRuntime,
+    UCloudRuntimeInfo,
+)
 
 RuntimeConfig = Annotated[
-    SubprocessConfig | DockerConfig | PrimeConfig | ModalConfig,
+    SubprocessConfig | DockerConfig | PrimeConfig | ModalConfig | UCloudConfig,
     Field(discriminator="type"),
 ]
 
 RuntimeInfo = Annotated[
-    SubprocessRuntimeInfo | DockerRuntimeInfo | PrimeRuntimeInfo | ModalRuntimeInfo,
+    SubprocessRuntimeInfo | DockerRuntimeInfo | PrimeRuntimeInfo | ModalRuntimeInfo | UCloudRuntimeInfo,
     Field(discriminator="type"),
 ]
 
@@ -36,6 +42,8 @@ RuntimeInfo = Annotated[
 def _runtime_cls(config: RuntimeConfig) -> type[Runtime]:
     if isinstance(config, PrimeConfig):
         return PrimeRuntime
+    if isinstance(config, UCloudConfig):
+        return UCloudRuntime
     if isinstance(config, ModalConfig):
         return ModalRuntime
     if isinstance(config, DockerConfig):
@@ -44,7 +52,8 @@ def _runtime_cls(config: RuntimeConfig) -> type[Runtime]:
 
 
 def make_runtime(config: RuntimeConfig, name: str | None = None) -> Runtime:
-    runtime = _runtime_cls(config)(config, name)
+    factory = cast(Callable[[RuntimeConfig, str | None], Runtime], _runtime_cls(config))
+    runtime = factory(config, name)
     register(runtime)
     return runtime
 
@@ -80,4 +89,7 @@ __all__ = [
     "ModalConfig",
     "ModalRuntime",
     "ModalRuntimeInfo",
+    "UCloudConfig",
+    "UCloudRuntime",
+    "UCloudRuntimeInfo",
 ]
