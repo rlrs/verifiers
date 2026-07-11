@@ -59,6 +59,15 @@ class UCloudRuntime(Runtime):
         self.info = UCloudRuntimeInfo(**config.model_dump())
         self._client: AsyncSandboxClient | None = None
         self._sandbox: AsyncSandboxHandle | None = None
+        self._started_at = time.monotonic()
+        self._timings: dict[str, float] = {}
+        self._counts: dict[str, int] = {}
+
+    def _add_timing(self, name: str, started_at: float) -> None:
+        self._timings[name] = self._timings.get(name, 0.0) + time.monotonic() - started_at
+
+    def _increment(self, name: str) -> None:
+        self._counts[name] = self._counts.get(name, 0) + 1
 
     def _base_url(self) -> str:
         url = self.config.base_url or os.environ.get("UCLOUD_SANDBOX_URL") or os.environ.get("UCLOUD_SANDBOX_API_URL")
@@ -88,9 +97,12 @@ class UCloudRuntime(Runtime):
         )
         self._client = client
         try:
+            limiter_started_at = time.monotonic()
             async with (
                 creation_limiter((self.config.creates_per_min or 0) / 60, "ucloud-sandbox") or contextlib.nullcontext()
             ):
+                self._add_timing("creation_limiter_wait", limiter_started_at)
+                provision_started_at = time.monotonic()
                 deadline = time.monotonic() + self.config.start_timeout_seconds
                 while True:
                     remaining = deadline - time.monotonic()
@@ -125,25 +137,32 @@ class UCloudRuntime(Runtime):
                         )
                         if e.status_code != 503 or not pending:
                             raise
+                        self._increment("provision_retries")
                     except (ClientError, TimeoutError):
-                        pass
+                        self._increment("provision_retries")
                     remaining = deadline - time.monotonic()
                     if remaining > 0:
                         await asyncio.sleep(min(self.config.retry_interval_seconds, remaining))
+            self._add_timing("provision", provision_started_at)
             self._sandbox = sandbox
             self.info.id = sandbox.id
+            bootstrap_started_at = time.monotonic()
             result = await sandbox.exec(
                 ["mkdir", "-p", self.config.workdir, TRANSFER_DIR],
                 timeout_seconds=self.config.request_timeout_seconds,
             )
             if not result.success:
                 raise SandboxError(f"failed to create workdir: {result.stderr.strip()}")
+            self._add_timing("bootstrap", bootstrap_started_at)
+            self._add_timing("start", self._started_at)
+            self._increment("sandboxes")
             logger.info("ucloud: sandbox %s up (image=%s)", sandbox.id, self.config.image)
         except Exception as e:
             await self.teardown()
             raise SandboxError(f"ucloud sandbox provisioning failed: {e}") from e
 
     async def run(self, argv: list[str], env: dict[str, str]) -> ProgramResult:
+        started_at = time.monotonic()
         try:
             result = await self._require_sandbox().exec(
                 argv,
@@ -152,11 +171,22 @@ class UCloudRuntime(Runtime):
             )
         except Exception as e:
             raise SandboxError(f"ucloud exec failed: {e}") from e
+        finally:
+            self._increment("execs")
+            self._add_timing("exec", started_at)
         return ProgramResult(
             exit_code=result.exit_code if result.exit_code is not None else 1,
             stdout=result.stdout,
             stderr=result.stderr,
         )
+
+    async def run_program(self, argv: list[str], env: dict[str, str]) -> ProgramResult:
+        started_at = time.monotonic()
+        try:
+            return await self.run(argv, env)
+        finally:
+            self._increment("programs")
+            self._add_timing("program", started_at)
 
     async def run_background(self, argv: list[str], env: dict[str, str], log: str) -> None:
         inner = f"nohup {shlex.join(argv)} > {shlex.quote(log)} 2>&1 &"
@@ -316,6 +346,7 @@ class UCloudRuntime(Runtime):
 
     async def teardown(self) -> None:
         client, self._client = self._client, None
+        teardown_started_at = time.monotonic()
         sandbox, self._sandbox = self._sandbox, None
         if client is None:
             return
@@ -326,3 +357,13 @@ class UCloudRuntime(Runtime):
                 logger.warning("ucloud: failed to delete sandbox %s: %s", self.info.id, e)
         with contextlib.suppress(Exception):
             await client.close()
+        self._add_timing("teardown", teardown_started_at)
+        timings = " ".join(f"{name}={value:.1f}s" for name, value in sorted(self._timings.items()))
+        counts = " ".join(f"{name}={value}" for name, value in sorted(self._counts.items()))
+        logger.info(
+            "ucloud: sandbox %s lifecycle total=%.1fs %s %s",
+            self.info.id,
+            time.monotonic() - self._started_at,
+            timings,
+            counts,
+        )
