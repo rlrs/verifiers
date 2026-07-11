@@ -87,7 +87,7 @@ examples = [
 
 [project.optional-dependencies]
 ucloud = [
-    "ucloud-sandboxes-sdk[async] @ https://github.com/rlrs/ucloud-sandboxes-sdk/archive/baf0021.tar.gz",
+    "ucloud-sandboxes-sdk[async] @ https://github.com/rlrs/ucloud-sandboxes-sdk/archive/dabc395.tar.gz",
 ]
 rg = [
     "reasoning-gym",

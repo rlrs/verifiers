@@ -6153,9 +6153,9 @@ wheels = [
 
 [[package]]
 name = "ucloud-sandboxes-sdk"
-version = "0.4.0"
-source = { url = "https://github.com/rlrs/ucloud-sandboxes-sdk/archive/baf0021.tar.gz" }
-sdist = { hash = "sha256:6275052f92dec45b203967dcbfc3717416faa8856c1cd45a20b58400c63f95fd" }
+version = "0.4.1"
+source = { url = "https://github.com/rlrs/ucloud-sandboxes-sdk/archive/dabc395.tar.gz" }
+sdist = { hash = "sha256:53f631c1ac53fcf715d1c841267d2f427bdc019d28f057e3f9f00e521df8a110" }
 
 [package.optional-dependencies]
 async = [
@@ -6388,7 +6388,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'rl'", specifier = ">=2.8.0,<2.9.0" },
     { name = "transformers", marker = "extra == 'rl'", specifier = ">=4.56.2" },
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
-    { name = "ucloud-sandboxes-sdk", extras = ["async"], marker = "extra == 'ucloud'", url = "https://github.com/rlrs/ucloud-sandboxes-sdk/archive/baf0021.tar.gz" },
+    { name = "ucloud-sandboxes-sdk", extras = ["async"], marker = "extra == 'ucloud'", url = "https://github.com/rlrs/ucloud-sandboxes-sdk/archive/dabc395.tar.gz" },
     { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'", specifier = ">=0.21.0" },
     { name = "vllm", marker = "extra == 'rl'", specifier = ">=0.10.0,<0.11.0" },
     { name = "wandb", marker = "extra == 'rl'" },
