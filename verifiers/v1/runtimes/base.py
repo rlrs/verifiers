@@ -187,6 +187,17 @@ class Runtime(ABC):
         if digest not in self._uv_interpreters:
             async with self._uv_script_locks.setdefault(digest, asyncio.Lock()):
                 if digest not in self._uv_interpreters:
+                    cache_dirs = [
+                        value
+                        for key in ("TMPDIR", "UV_CACHE_DIR")
+                        if (value := (env or {}).get(key))
+                    ]
+                    if cache_dirs:
+                        result = await self.run(["mkdir", "-p", *cache_dirs], {})
+                        if result.exit_code != 0:
+                            raise RuntimeError(
+                                f"failed to create uv cache directories: {result.stderr.strip()}"
+                            )
                     tmp = f"{path}.{uuid.uuid4().hex}.tmp"
                     await self.write(tmp, data)
                     await self.run(
