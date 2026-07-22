@@ -15,16 +15,22 @@ from verifiers.v1.interception.server import (
     InterceptionServer,
     InterceptionServerConfig,
 )
+from verifiers.v1.interception.ucloud import (
+    UCloudRelayInterception,
+    UCloudRelayInterceptionConfig,
+)
 from verifiers.v1.runtimes import runtime_is_local
 
 if TYPE_CHECKING:
     from verifiers.v1.mcp import SharedToolServer
 
-# Discriminated on `type` so the CLI selects with `--interception.type server|static|elastic`.
+# Discriminated on `type` so the CLI selects with
+# `--interception.type server|static|elastic|ucloud-relay`.
 InterceptionConfig = Annotated[
     InterceptionServerConfig
     | StaticInterceptionPoolConfig
-    | ElasticInterceptionPoolConfig,
+    | ElasticInterceptionPoolConfig
+    | UCloudRelayInterceptionConfig,
     Field(discriminator="type"),
 ]
 
@@ -65,6 +71,8 @@ def make_interception(
         return InterceptionServer(config, requires_tunnel)
     if isinstance(config, StaticInterceptionPoolConfig):
         return StaticInterceptionPool(config, requires_tunnel)
+    if isinstance(config, UCloudRelayInterceptionConfig):
+        return UCloudRelayInterception(config)
     return ElasticInterceptionPool(config, requires_tunnel)
 
 
@@ -81,4 +89,6 @@ __all__ = [
     "InterceptionServerConfig",
     "StaticInterceptionPoolConfig",
     "ElasticInterceptionPoolConfig",
+    "UCloudRelayInterception",
+    "UCloudRelayInterceptionConfig",
 ]

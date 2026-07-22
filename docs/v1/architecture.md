@@ -12,6 +12,14 @@ The **rollout** is the executable combination of one loaded task, the harness, a
 - The `docker` runtime runs the rollouts in docker containers on your local machine.
 - Sandbox runtimes, such as `prime` or `modal`, are meant for production, especially for training or higher concurrency evaluation. These runtimes run remotely.
 
+The `ucloud` runtime is available when `ucloud-sandboxes-sdk[async]` is
+installed. Set `UCLOUD_SANDBOX_API_URL` and `UCLOUD_SANDBOX_API_TOKEN`, and
+pair the runtime with `env.interception.type = "ucloud-relay"`. The relay reads
+its URL and worker/sandbox credentials from the `UCLOUD_RELAY_*` environment
+variables; this keeps the host interception server private while UCloud
+sandboxes reach it through the polling relay. The relay adapter currently
+supports non-streaming model requests.
+
 The harness runs inside the rollout runtime to interact with the taskset. The harness does _not_ call the provider endpoint directly. Instead, model traffic goes through an **interception server** over a local connection or [Prime Tunnel](https://docs.primeintellect.ai/sandboxes/tunnel).
 
 The interception server receives all these requests and then sends them over to the actual API, e.g. the OpenAI responses endpoint. It uses the endpoint that the harness expects, so Codex will use OpenAI Responses, while Claude Code will use the Anthropic Messages API.

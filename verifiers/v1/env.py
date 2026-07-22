@@ -76,7 +76,8 @@ class EnvConfig(BaseConfig):
     """Bounds concurrent agent runs on a SERVED env, per worker (None = no limit);
     the in-process eval CLI gates with its run-level `--max-concurrent` instead."""
     interception: InterceptionConfig = ElasticInterceptionPoolConfig()
-    """The interception shape: `elastic` (default), `server`, or `static`."""
+    """The interception shape: `elastic` (default), `server`, `static`, or
+    `ucloud-relay`."""
 
     @property
     def env_id(self) -> str:
