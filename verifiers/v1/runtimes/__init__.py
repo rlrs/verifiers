@@ -16,14 +16,23 @@ from verifiers.v1.runtimes.subprocess import (
     SubprocessRuntime,
     SubprocessRuntimeInfo,
 )
+from verifiers.v1.runtimes.ucloud import (
+    UCloudConfig,
+    UCloudRuntime,
+    UCloudRuntimeInfo,
+)
 
 RuntimeConfig = Annotated[
-    SubprocessConfig | DockerConfig | PrimeConfig | ModalConfig,
+    SubprocessConfig | DockerConfig | PrimeConfig | ModalConfig | UCloudConfig,
     Field(discriminator="type"),
 ]
 
 RuntimeInfo = Annotated[
-    SubprocessRuntimeInfo | DockerRuntimeInfo | PrimeRuntimeInfo | ModalRuntimeInfo,
+    SubprocessRuntimeInfo
+    | DockerRuntimeInfo
+    | PrimeRuntimeInfo
+    | ModalRuntimeInfo
+    | UCloudRuntimeInfo,
     Field(discriminator="type"),
 ]
 
@@ -35,6 +44,8 @@ def _runtime_cls(config: RuntimeConfig) -> type[Runtime]:
         return ModalRuntime
     if isinstance(config, DockerConfig):
         return DockerRuntime
+    if isinstance(config, UCloudConfig):
+        return UCloudRuntime
     return SubprocessRuntime
 
 
@@ -71,4 +82,7 @@ __all__ = [
     "ModalConfig",
     "ModalRuntime",
     "ModalRuntimeInfo",
+    "UCloudConfig",
+    "UCloudRuntime",
+    "UCloudRuntimeInfo",
 ]

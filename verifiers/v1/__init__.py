@@ -93,6 +93,7 @@ from verifiers.v1.runtimes import (
     RuntimeConfig,
     RuntimeInfo,
     SubprocessConfig,
+    UCloudConfig,
 )
 from verifiers.v1.state import State, StateT
 from verifiers.v1.task import (
@@ -243,6 +244,7 @@ __all__ = [
     "SubprocessConfig",
     "DockerConfig",
     "PrimeConfig",
+    "UCloudConfig",
     "Env",
     "SingleAgentEnv",
     "EnvConfig",
