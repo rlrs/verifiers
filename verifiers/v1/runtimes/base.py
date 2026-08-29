@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import ClassVar
 
+from pydantic import ConfigDict, model_validator
 from pydantic_config import BaseConfig
 
-from verifiers.v1.configs.runtime import NetworkPolicyConfig
+from verifiers.v1.configs.runtime import BaseRuntimeConfig, NetworkPolicyConfig
 from verifiers.v1.errors import SandboxError
 from verifiers.v1.utils.aio import run_shielded
 
@@ -123,10 +124,33 @@ def cleanup_at_exit() -> None:
 
 
 class BaseRuntimeInfo(BaseConfig):
+    """Runtime metadata contract; concrete infos also inherit their config class."""
+
+    type: str
     id: str | None = None
     borrowed: bool = False
     """Whether the run was placed into a live box owned by someone else
     (`Agent.run(runtime=...)`) rather than provisioning its own."""
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _resolve_runtime(cls, value, handler):
+        if cls is BaseRuntimeInfo and isinstance(value, dict):
+            runtime_type = value.get("type")
+            if isinstance(runtime_type, str) and runtime_type:
+                from verifiers.v1.runtimes import find_runtime_class
+
+                runtime_cls = find_runtime_class(runtime_type)
+                if runtime_cls is None:
+                    return WireRuntimeInfo.model_validate(value)
+                return runtime_cls.info_cls.model_validate(value)
+        return handler(value)
+
+
+class WireRuntimeInfo(BaseRuntimeInfo):
+    """Runtime metadata retained when its implementation is absent."""
+
+    model_config = ConfigDict(extra="allow")
 
 
 class Runtime(ABC):
@@ -141,6 +165,9 @@ class Runtime(ABC):
     """Digest-keyed PEP 723 scripts inside the runtime. Sandboxes own their `/tmp`;
     the host subprocess runtime overrides this with its per-user cache."""
 
+    config_cls: ClassVar[type[BaseRuntimeConfig]]
+    info_cls: ClassVar[type[BaseRuntimeInfo]]
+    config: BaseRuntimeConfig
     info: BaseRuntimeInfo
 
     @property

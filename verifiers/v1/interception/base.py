@@ -12,8 +12,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from contextlib import AbstractAsyncContextManager, AsyncExitStack
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, ClassVar, Self
 
+from pydantic import model_validator
 from pydantic_config import BaseConfig
 
 if TYPE_CHECKING:
@@ -24,6 +25,19 @@ class BaseInterceptionConfig(BaseConfig):
     """Base for the interception types — the discriminated union's common type. Per-type
     fields live on the subclasses (server's `tunnel`, static's `servers`, elastic's
     `multiplex`)."""
+
+    type: str
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _resolve_interception(cls, value, handler):
+        if cls is BaseInterceptionConfig and isinstance(value, dict):
+            interception_type = value.get("type")
+            if isinstance(interception_type, str) and interception_type:
+                from verifiers.v1.interception import interception_config_type
+
+                return interception_config_type(interception_type).model_validate(value)
+        return handler(value)
 
 
 # (base_url, model_secret, state_secret): model inference and task state deliberately use
@@ -37,6 +51,8 @@ class Interception(ABC):
     arms lazy growth), `stop` tears every server (+ its tunnel) down via `stack` — LIFO,
     even if one teardown fails; `async with` wraps the two. Each rollout `acquire`s a slot
     and frees it on exit."""
+
+    config_cls: ClassVar[type[BaseInterceptionConfig]]
 
     def __init__(self) -> None:
         self.stack = AsyncExitStack()

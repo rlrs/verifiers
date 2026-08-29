@@ -16,8 +16,7 @@ from collections.abc import AsyncIterator
 from pathlib import PurePosixPath
 from typing import ClassVar, Literal
 
-from pydantic_config import BaseConfig
-
+from verifiers.v1.configs.runtime import BaseRuntimeConfig
 from verifiers.v1.errors import SandboxError
 from verifiers.v1.runtimes.base import (
     SERVICE_PORT,
@@ -35,7 +34,7 @@ logger = logging.getLogger(__name__)
 _APP_NAME = "verifiers-v1"
 
 
-class ModalConfig(BaseConfig):
+class ModalConfig(BaseRuntimeConfig):
     type: Literal["modal"] = "modal"
     image: str = "python:3.11-slim"
     workdir: str = "/app"
@@ -102,6 +101,8 @@ class ModalProcess(RuntimeProcess):
 
 
 class ModalRuntime(Runtime):
+    config_cls = ModalConfig
+    info_cls = ModalRuntimeInfo
     is_local: ClassVar[bool] = False
 
     def __init__(self, config: ModalConfig, name: str | None = None) -> None:

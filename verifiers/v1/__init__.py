@@ -73,6 +73,8 @@ from verifiers.v1.mcp import (
     ToolsetConfig,
 )
 from verifiers.v1.runtimes import (
+    BaseRuntimeConfig,
+    BaseRuntimeInfo,
     DockerConfig,
     PrimeConfig,
     ProgramResult,
@@ -284,6 +286,8 @@ __all__ = [  # noqa: RUF022 - grouped by public API area
     "ModelContext",
     "Runtime",
     "RuntimeProcess",
+    "BaseRuntimeConfig",
+    "BaseRuntimeInfo",
     "RuntimeConfig",
     "RuntimeInfo",
     "ProgramResult",

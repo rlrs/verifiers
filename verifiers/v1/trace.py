@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import TYPE_CHECKING, Any, Generic
 
 import numpy as np
-from pydantic import BaseModel, Field, PrivateAttr, field_serializer
+from pydantic import BaseModel, Field, PrivateAttr, SerializeAsAny, field_serializer
 from renderers.base import MultiModalData
 from typing_extensions import TypeVar
 
@@ -107,7 +107,7 @@ AgentConfigT = TypeVar("AgentConfigT", bound=AgentConfig, default=AgentConfig)
 class AgentInfo(BaseModel, Generic[AgentConfigT]):
     config: AgentConfigT
     """The resolved config that rebuilds the agent (`Agent(trace.agent.config)`)."""
-    runtime: RuntimeInfo | None = None
+    runtime: SerializeAsAny[RuntimeInfo] | None = None
     """The box the rollout ran in; None until provisioning."""
     name: str = "agent"
     """The env agent that produced this trace (the config field name, e.g. `solver`)."""

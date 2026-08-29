@@ -176,6 +176,9 @@ control.sendmsg([b"listener"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.arr
 
 
 class DockerRuntime(Runtime):
+    config_cls = DockerConfig
+    info_cls = DockerRuntimeInfo
+
     def __init__(self, config: DockerConfig, name: str | None = None) -> None:
         super().__init__(name)
         self.config = config

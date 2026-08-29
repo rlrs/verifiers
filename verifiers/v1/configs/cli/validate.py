@@ -24,7 +24,7 @@ class ValidateConfig(BaseConfig):
     """Run identity: `run.name` auto-generates as `<taskset>--validate--<short-id>` and
     names the run directory under `output_dir`."""
     taskset: SerializeAsAny[TasksetConfig] = TasksetConfig()
-    runtime: RuntimeConfig = PrimeConfig()
+    runtime: SerializeAsAny[RuntimeConfig] = PrimeConfig()
     """Where each task's validation hooks run."""
     timeout: CheckTimeoutConfig = CheckTimeoutConfig()
     only_setup: bool = False

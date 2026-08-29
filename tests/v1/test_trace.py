@@ -170,3 +170,11 @@ def test_wire_trace_round_trip():
 
     # the env-server wire form (a plain model_dump) loads too
     assert vf.WireTrace.model_validate(tr.model_dump()).num_branches == 2
+
+    # wire traces preserve runtime-specific fields when that runtime is not installed
+    data["agent"]["config"]["runtime"] = {"type": "missing", "custom": "value"}
+    data["agent"]["runtime"] = {"type": "missing", "custom": "value"}
+    wire = vf.WireTrace.model_validate(data)
+    assert wire.agent.config.runtime.model_extra == {"custom": "value"}
+    assert wire.agent.runtime is not None
+    assert wire.agent.runtime.model_extra == {"custom": "value"}

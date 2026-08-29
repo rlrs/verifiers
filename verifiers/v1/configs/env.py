@@ -57,7 +57,7 @@ class EnvConfig(BaseConfig):
     spelled `max_concurrent`: that key used to bound a served worker's agent runs
     across episodes, and taking it as this one silently multiplies it by the episodes
     in flight."""
-    interception: InterceptionConfig = ElasticInterceptionPoolConfig()
+    interception: SerializeAsAny[InterceptionConfig] = ElasticInterceptionPoolConfig()
     """The interception shape: `elastic` (default), `server`, or `static`."""
 
     @property

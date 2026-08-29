@@ -9,8 +9,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import ClassVar, Literal
 
-from pydantic_config import BaseConfig
-
+from verifiers.v1.configs.runtime import BaseRuntimeConfig
 from verifiers.v1.runtimes.base import (
     BaseRuntimeInfo,
     ProgramResult,
@@ -27,7 +26,7 @@ _BACKGROUND_STOP_TIMEOUT = 5
 # child processes inherit them. Containers and sandboxes inherit no host environment.
 
 
-class SubprocessConfig(BaseConfig):
+class SubprocessConfig(BaseRuntimeConfig):
     type: Literal["subprocess"] = "subprocess"
 
 
@@ -76,6 +75,8 @@ class SubprocessProcess(RuntimeProcess):
 
 
 class SubprocessRuntime(Runtime):
+    config_cls = SubprocessConfig
+    info_cls = SubprocessRuntimeInfo
     # Share prepared script environments across the worker's per-rollout runtimes.
     scripts_dir: ClassVar[str] = str(CACHE_DIR / "runtimes" / "scripts")
     _interpreters: ClassVar[dict[str, str]] = {}

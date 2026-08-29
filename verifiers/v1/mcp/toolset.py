@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pydantic import SerializeAsAny
 from pydantic_config import BaseConfig
 
 from verifiers.v1.mcp.server import ConfigT, ServerBase
@@ -15,12 +16,12 @@ if TYPE_CHECKING:
 
 class ToolsetConfig(BaseConfig):
     colocated: bool = False
-    runtime: RuntimeConfig = SubprocessConfig()
+    runtime: SerializeAsAny[RuntimeConfig] = SubprocessConfig()
     url: str | None = None
 
 
 class SharedToolsetConfig(BaseConfig):
-    runtime: RuntimeConfig = SubprocessConfig()
+    runtime: SerializeAsAny[RuntimeConfig] = SubprocessConfig()
     url: str | None = None
 
 

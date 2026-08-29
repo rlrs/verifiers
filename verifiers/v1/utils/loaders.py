@@ -1,4 +1,4 @@
-"""Resolve taskset, harness, judge, hook, and environment plugins."""
+"""Resolve taskset, harness, judge, runtime, hook, and environment plugins."""
 
 import functools
 import importlib
@@ -67,13 +67,23 @@ def narrow_plugin_field(
         raise prefix_validation_error(e, (field,)) from None
 
 
-def _import_plugin(plugin_id: str, kind: str, group: str) -> ModuleType:
+def _import_plugin(
+    plugin_id: str, kind: str, group: str, *, external_prefix: str = ""
+) -> ModuleType:
     # Hub ids are `owner/name[@version]` (installed as just `name`); strip both
     # before normalizing so a hub id imports the same module a bare id would.
     name = plugin_id.rsplit("/", 1)[-1].split("@", 1)[0]
     module = name.replace("-", "_").lower()
     namespaced = f"{group}.{module}"
-    target = namespaced if importlib.util.find_spec(namespaced) else module
+    external = f"{external_prefix}{module}"
+    target = next(
+        (
+            candidate
+            for candidate in dict.fromkeys((namespaced, external, module))
+            if importlib.util.find_spec(candidate)
+        ),
+        module,
+    )
     try:
         return importlib.import_module(target)
     except ModuleNotFoundError as e:
@@ -136,6 +146,24 @@ def import_harness(harness_id: str) -> ModuleType:
 
 def import_judge(judge_id: str) -> ModuleType:
     return _import_plugin(judge_id, "judge", "verifiers.v1.judges")
+
+
+def import_runtime(runtime_type: str) -> ModuleType:
+    return _import_plugin(
+        runtime_type,
+        "runtime",
+        "verifiers.v1.runtimes",
+        external_prefix="verifiers_",
+    )
+
+
+def import_interception(interception_type: str) -> ModuleType:
+    return _import_plugin(
+        interception_type,
+        "interception",
+        "verifiers.v1.interception",
+        external_prefix="verifiers_",
+    )
 
 
 def taskset_class(taskset_id: str) -> type[Taskset]:

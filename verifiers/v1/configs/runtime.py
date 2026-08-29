@@ -4,8 +4,31 @@ from fnmatch import fnmatchcase
 from typing import Self
 from urllib.parse import urlsplit
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 from pydantic_config import BaseConfig
+
+
+class BaseRuntimeConfig(BaseConfig):
+    """Base config for built-in and installed runtime implementations."""
+
+    type: str
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _resolve_runtime(cls, value, handler):
+        if cls is BaseRuntimeConfig and isinstance(value, dict):
+            runtime_type = value.get("type")
+            if isinstance(runtime_type, str) and runtime_type:
+                from verifiers.v1.runtimes import runtime_config_type
+
+                return runtime_config_type(runtime_type).model_validate(value)
+        return handler(value)
+
+
+class WireRuntimeConfig(BaseRuntimeConfig):
+    """Runtime-agnostic config stored in permissive wire records."""
+
+    model_config = ConfigDict(extra="allow")
 
 
 def network_rule_matches(rule: str, scheme: str, host: str, port: int) -> bool:
@@ -29,8 +52,12 @@ def network_rule_matches(rule: str, scheme: str, host: str, port: int) -> bool:
     )
 
 
-class NetworkPolicyConfig(BaseConfig):
+class NetworkPolicyConfig(BaseRuntimeConfig):
     """Shared execution-time policy surface for runtimes that support it."""
+
+    # A bare policy is used to mediate model capabilities without representing a
+    # provisionable runtime. Concrete runtime configs override this with a literal.
+    type: str = ""
 
     allow: list[str] = Field(default_factory=lambda: ["*"])
     """Destinations allowed during execution; `*` is unrestricted and `[]` is

@@ -226,6 +226,8 @@ class InterceptionServer(Interception):
     needs a public URL, it mints the configured tunnel and binds where that tunnel says;
     otherwise it stays on host loopback."""
 
+    config_cls = InterceptionServerConfig
+
     def __init__(
         self,
         config: InterceptionServerConfig | None = None,

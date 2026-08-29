@@ -1,8 +1,8 @@
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Annotated
+from functools import cache
+from typing import TYPE_CHECKING, cast
 
-from pydantic import Field
 from pydantic_config import BaseConfig
 
 from verifiers.v1.interception.base import BaseInterceptionConfig, Interception, Slot
@@ -22,13 +22,52 @@ from verifiers.v1.session import RolloutSession
 if TYPE_CHECKING:
     from verifiers.v1.mcp import SharedToolServer
 
-# Discriminated on `type` so the CLI selects with `--interception.type server|static|elastic`.
-InterceptionConfig = Annotated[
+# Explicit built-ins retain their full CLI help; the base resolves installed types.
+InterceptionConfig = (
     InterceptionServerConfig
     | StaticInterceptionPoolConfig
-    | ElasticInterceptionPoolConfig,
-    Field(discriminator="type"),
-]
+    | ElasticInterceptionPoolConfig
+    | BaseInterceptionConfig
+)
+
+_BUILTIN_INTERCEPTIONS = {
+    "server": InterceptionServer,
+    "static": StaticInterceptionPool,
+    "elastic": ElasticInterceptionPool,
+}
+
+
+@cache
+def find_interception_class(interception_type: str) -> type[Interception] | None:
+    """Resolve a built-in or installed interception class, if present."""
+    if cls := _BUILTIN_INTERCEPTIONS.get(interception_type):
+        return cls
+    from verifiers.v1.utils.loaders import _plugin_class, import_interception
+
+    try:
+        module = import_interception(interception_type)
+    except ModuleNotFoundError:
+        return None
+    cls = cast(type[Interception], _plugin_class(module, Interception, "interception"))
+    if not issubclass(cls.config_cls, BaseInterceptionConfig):
+        raise TypeError("interception config_cls must subclass BaseInterceptionConfig")
+    if cls.config_cls.model_fields["type"].default != interception_type:
+        raise ValueError(
+            f"interception module and config type disagree for {interception_type!r}"
+        )
+    return cls
+
+
+def interception_class(interception_type: str) -> type[Interception]:
+    if cls := find_interception_class(interception_type):
+        return cls
+    raise ValueError(f"interception type {interception_type!r} is not installed")
+
+
+def interception_config_type(
+    interception_type: str,
+) -> type[BaseInterceptionConfig]:
+    return interception_class(interception_type).config_cls
 
 
 def requires_tunnel(
@@ -64,11 +103,13 @@ def make_interception(
     """The interception for a config, picked by type (the host-side counterpart to
     `make_runtime`). With `requires_tunnel`, each server is exposed through its configured
     tunnel; otherwise it remains on host loopback. The caller computes this requirement."""
-    if isinstance(config, InterceptionServerConfig):
-        return InterceptionServer(config, requires_tunnel, state_service_secrets)
-    if isinstance(config, StaticInterceptionPoolConfig):
-        return StaticInterceptionPool(config, requires_tunnel, state_service_secrets)
-    return ElasticInterceptionPool(config, requires_tunnel, state_service_secrets)
+    cls = interception_class(config.type)
+    if not isinstance(config, cls.config_cls):
+        raise TypeError(
+            f"interception config for {config.type!r} must be "
+            f"{cls.config_cls.__name__}, got {type(config).__name__}"
+        )
+    return cls(config, requires_tunnel, state_service_secrets)
 
 
 @asynccontextmanager
@@ -112,6 +153,9 @@ __all__ = [
     "Slot",
     "StaticInterceptionPool",
     "StaticInterceptionPoolConfig",
+    "find_interception_class",
+    "interception_class",
+    "interception_config_type",
     "make_interception",
     "requires_tunnel",
     "serve_interception",

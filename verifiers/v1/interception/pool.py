@@ -47,6 +47,8 @@ class StaticInterceptionPool(Interception):
     a slot on the least-loaded one. No capacity cap — sizing the set to the load is the
     operator's call (it's the shape for pre-provisioned/bring-your-own endpoints)."""
 
+    config_cls = StaticInterceptionPoolConfig
+
     def __init__(
         self,
         config: StaticInterceptionPoolConfig,
@@ -88,6 +90,8 @@ class ElasticInterceptionPool(Interception):
     """Warm the first interception server on start, then grow on demand: `multiplex`
     rollouts share one server (one prime tunnel behind a remote consumer); `acquire` hands
     a rollout a slot on one, bringing up a new server when all are at capacity."""
+
+    config_cls = ElasticInterceptionPoolConfig
 
     def __init__(
         self,

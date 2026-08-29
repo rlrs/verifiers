@@ -14,7 +14,7 @@ import asyncio
 import logging
 from contextlib import AsyncExitStack
 
-from pydantic import Field
+from pydantic import Field, SerializeAsAny
 
 import verifiers.v1 as vf
 from verifiers.v1.runtimes import RuntimeConfig, provision_runtime
@@ -33,7 +33,7 @@ class HarborEnvConfig(vf.EnvConfig):
     agent: vf.AgentConfig = vf.AgentConfig()
     """The one seat — the policy under evaluation/training; pin
     `--env.agent.harness.*` to choose its program or runtime."""
-    verifier_runtime: RuntimeConfig | None = None
+    verifier_runtime: SerializeAsAny[RuntimeConfig] | None = None
     """Where a separate-verifier task grades. None derives the grading box from
     the solver's runtime policy; set it (e.g. `--env.verifier-runtime.type prime
     --env.verifier-runtime.vm true`) when the verifier needs different placement
