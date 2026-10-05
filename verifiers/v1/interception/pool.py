@@ -17,7 +17,7 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field
 
@@ -28,6 +28,9 @@ from verifiers.v1.interception.server import (
 )
 from verifiers.v1.interception.tunnel import PrimeTunnelConfig
 from verifiers.v1.session import RolloutSession
+
+if TYPE_CHECKING:
+    from verifiers.v1.runtimes.base import Runtime
 
 logger = logging.getLogger(__name__)
 
@@ -67,11 +70,13 @@ class StaticInterceptionPool(Interception):
             await self.stack.enter_async_context(server)
 
     @asynccontextmanager
-    async def acquire(self, session: RolloutSession) -> AsyncIterator[Slot]:
+    async def acquire(
+        self, session: RolloutSession, runtime: "Runtime | None" = None
+    ) -> AsyncIterator[Slot]:
         # server.acquire registers before its first yield, so concurrent acquires see the
         # updated load before choosing their own least-loaded server.
         server = min(self.servers, key=lambda s: s.load)
-        async with server.acquire(session) as slot:
+        async with server.acquire(session, runtime) as slot:
             yield slot
 
 
@@ -140,7 +145,9 @@ class ElasticInterceptionPool(Interception):
         return server
 
     @asynccontextmanager
-    async def acquire(self, session: RolloutSession) -> AsyncIterator[Slot]:
+    async def acquire(
+        self, session: RolloutSession, runtime: "Runtime | None" = None
+    ) -> AsyncIterator[Slot]:
         if self._warm_task is not None:
             with contextlib.suppress(Exception):
                 await asyncio.shield(self._warm_task)

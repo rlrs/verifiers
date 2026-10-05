@@ -31,7 +31,7 @@ from collections.abc import AsyncIterator, Collection, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from tempfile import SpooledTemporaryFile
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from aiohttp import web
 from pydantic import ValidationError
@@ -61,6 +61,9 @@ from verifiers.v1.interception.tunnel import (
 from verifiers.v1.session import IdempotentRequest, ReplayResponse, RolloutSession
 from verifiers.v1.trace import Error, ModelCall, PolicyEvent, TimeSpan
 from verifiers.v1.types import FinishReason, Request, Response, Usage
+
+if TYPE_CHECKING:
+    from verifiers.v1.runtimes.base import Runtime
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +291,9 @@ class InterceptionServer(Interception):
             session.release()
 
     @asynccontextmanager
-    async def acquire(self, session: RolloutSession) -> AsyncIterator[Slot]:
+    async def acquire(
+        self, session: RolloutSession, runtime: "Runtime | None" = None
+    ) -> AsyncIterator[Slot]:
         model_secret, state_secret = self.register(session)
         try:
             yield self.base_url, model_secret, state_secret

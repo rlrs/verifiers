@@ -18,6 +18,7 @@ from pydantic import model_validator
 from pydantic_config import BaseConfig
 
 if TYPE_CHECKING:
+    from verifiers.v1.runtimes.base import Runtime
     from verifiers.v1.session import RolloutSession
 
 
@@ -77,6 +78,10 @@ class Interception(ABC):
         await self.stop()
 
     @abstractmethod
-    def acquire(self, session: RolloutSession) -> AbstractAsyncContextManager[Slot]:
+    def acquire(
+        self, session: RolloutSession, runtime: Runtime | None = None
+    ) -> AbstractAsyncContextManager[Slot]:
         """Register `session` on a server (bringing one up if needed) and yield its `Slot`;
-        free it on exit."""
+        free it on exit. `runtime` is the rollout's started runtime: an interception
+        that schedules the runtime's resources around model calls binds the session to
+        it; others ignore it."""

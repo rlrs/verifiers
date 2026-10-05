@@ -124,7 +124,7 @@ async def serve_interception(
     lifecycle), else on a per-rollout `InterceptionServer` owned — brought up and torn
     down — by the caller's context."""
     if interception is not None:
-        async with interception.acquire(session) as slot:
+        async with interception.acquire(session, runtime) as slot:
             yield slot
         return
     tunneled = requires_tunnel(
