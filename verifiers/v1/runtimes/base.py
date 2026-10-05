@@ -11,7 +11,7 @@ import shlex
 import uuid
 import weakref
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import ClassVar
@@ -379,6 +379,15 @@ class Runtime(ABC):
     @abstractmethod
     async def write(self, path: str, data: bytes) -> None:
         pass
+
+    async def write_many(self, files: Mapping[str, bytes]) -> None:
+        """Write each file (path -> bytes), with the same per-file semantics as `write`:
+        the same paths, bytes only (no modes), parents created. Not atomic as a batch: a
+        failure may leave earlier files written. The default awaits `write` per file, in
+        order; providers that pay a round trip per `write` may override to deliver the
+        batch in one request."""
+        for path, data in files.items():
+            await self.write(path, data)
 
     def host_url(self, url: str) -> str:
         """The URL a program inside this runtime uses to reach a host-bound `url`."""

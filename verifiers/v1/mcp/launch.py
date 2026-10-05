@@ -196,9 +196,8 @@ async def _install_in_sandbox(server: ServerBase, runtime: Runtime) -> str:
         env_name, env_data = await _cached_sdist(env)
     vf_remote = f"{root}/{vf_name}"
     env_remote = f"{root}/{env_name}"
-    await runtime.write(vf_remote, vf_data)
-    if env_remote != vf_remote:
-        await runtime.write(env_remote, env_data)
+    # When `env == vf` both paths name the same sdist and collapse into one entry.
+    await runtime.write_many({vf_remote: vf_data, env_remote: env_data})
     venv = str(PurePosixPath(workdir) / ".vf-venv")
     root_q, temp_q, cache_q, venv_q = map(shlex.quote, (root, temp, cache, venv))
     extras = ",".join(type(server).EXTRAS)

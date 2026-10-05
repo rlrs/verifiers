@@ -75,9 +75,10 @@ class HermesAgentHarness(ACPHarness[HermesAgentHarnessConfig]):
             "auxiliary": {"title_generation": {"enabled": False}},
             "providers": {"openai": provider},
         }
-        await runtime.write(f"{home}/config.yaml", json.dumps(config).encode())
+        files = {f"{home}/config.yaml": json.dumps(config).encode()}
         if not self.config.use_bundled_skill:
-            await runtime.write(f"{home}/.no-bundled-skills", b"")
+            files[f"{home}/.no-bundled-skills"] = b""
+        await runtime.write_many(files)
         await self.install_skills(runtime, f"{home}/skills")
 
         env = {

@@ -98,24 +98,27 @@ class Harness(ABC, Generic[ConfigT]):
     async def install_skills(self, runtime: Runtime, dest: str) -> None:
         """Upload each `config.skills` folder into `runtime` at `dest/<folder name>` —
         the program's fixed skill discovery location, which a supporting harness's
-        `setup` passes."""
+        `setup` passes. All files go up in one `write_many` batch."""
+        files: dict[str, bytes] = {}
+        executables = []
         for skill in self.config.skills:
             # Resolve so `.`/`..` entries get their real folder name (and can't
             # place files outside `dest`).
             skill = skill.resolve()
             if not skill.is_dir():
                 raise ValueError(f"skill {str(skill)!r} is not a folder")
-            executables = []
             for file in sorted(skill.rglob("*")):
                 if not file.is_file():
                     continue
                 target = f"{dest}/{skill.name}/{file.relative_to(skill).as_posix()}"
-                await runtime.write(target, file.read_bytes())
+                files[target] = file.read_bytes()
                 if os.access(file, os.X_OK):
                     executables.append(target)
-            if executables:
-                # `write` moves bytes, not modes; restore the execute bits scripts need.
-                await runtime.run(["chmod", "+x", *executables], {})
+        if files:
+            await runtime.write_many(files)
+        if executables:
+            # `write_many` moves bytes, not modes; restore the execute bits scripts need.
+            await runtime.run(["chmod", "+x", *executables], {})
 
     async def run(
         self,

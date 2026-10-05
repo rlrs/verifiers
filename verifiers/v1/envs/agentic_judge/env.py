@@ -180,8 +180,7 @@ class JudgeTask(vf.Task):
         # never survive it — a symlinked TRACE_FILE would redirect the write onto
         # any file the solver chose.
         await runtime.run(["rm", "-f", VERDICT_FILE, *self.files], env={})
-        for path, content in self.files.items():
-            await runtime.write(path, content)
+        await runtime.write_many(self.files)
 
     async def finalize(self, trace: vf.Trace, runtime: vf.Runtime) -> None:
         """Scrape the verdict off the box while it's alive. A judge that wrote no
