@@ -25,10 +25,11 @@ from verifiers.v1.utils.aio import run_shielded
 
 logger = logging.getLogger(__name__)
 
-# Ensure the latest `uv` is available for our PEP 723 scripts: prefer pip on Python images,
-# then fall back to the standalone installer (curl/wget), installing curl + CA certs when a
-# bare image has no downloader. Both paths install to ~/.local/bin, which we prepend to PATH.
-# (Needs network + one of pip / curl / wget / apt-get / apk.)
+# Ensure `uv` is available for our PEP 723 scripts. A preset `UV_INSTALL_DIR` (e.g. a
+# read-only toolkit's bin) is used as is; otherwise ~/.local/bin. Only when no `uv` is on
+# PATH: prefer pip on Python images, then the standalone installer (curl/wget), installing
+# curl + CA certs when a bare image has no downloader. (Installing needs network + one of
+# pip / curl / wget / apt-get / apk.)
 _INSTALL_CURL = (  # only when the image has no downloader; needs a known package manager
     "{ command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; } "
     "|| { apt-get update -qq && apt-get install -y -qq curl ca-certificates; } "
@@ -39,8 +40,9 @@ _DOWNLOAD_UV = (
     "|| { command -v wget >/dev/null 2>&1 && wget -qO- https://astral.sh/uv/install.sh | sh; }"
 )
 _ENSURE_UV = (
-    'export PATH="$HOME/.local/bin:$PATH" UV_INSTALL_DIR="$HOME/.local/bin"; '
-    "pip install -q -U --user uv 2>/dev/null "
+    'UV_INSTALL_DIR="${UV_INSTALL_DIR:-$HOME/.local/bin}"; '
+    'export UV_INSTALL_DIR PATH="$UV_INSTALL_DIR:$HOME/.local/bin:$PATH"; '
+    "command -v uv >/dev/null 2>&1 || pip install -q -U --user uv 2>/dev/null "
     f"|| {{ {_INSTALL_CURL}; {_DOWNLOAD_UV}; }}"
 )
 
@@ -310,8 +312,9 @@ class Runtime(ABC):
             return [interpreter, path]
         venv = str(PurePosixPath(interpreter).parent.parent)
         command = (
-            'export VIRTUAL_ENV="$1" PATH="${1}/bin:$HOME/.local/bin:$PATH" '
-            'UV_INSTALL_DIR="$HOME/.local/bin" UV_RUN_RECURSION_DEPTH=1; '
+            'UV_INSTALL_DIR="${UV_INSTALL_DIR:-$HOME/.local/bin}"; '
+            'export VIRTUAL_ENV="$1" PATH="${1}/bin:$UV_INSTALL_DIR:$HOME/.local/bin:$PATH" '
+            "UV_INSTALL_DIR UV_RUN_RECURSION_DEPTH=1; "
             'shift; exec "$@"'
         )
         return [
