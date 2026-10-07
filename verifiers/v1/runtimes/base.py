@@ -182,6 +182,10 @@ class Runtime(ABC):
         # Per-run task values live on the runtime rather than its serializable config/info.
         # Explicit process values (model credentials, proxy settings, etc.) override these.
         self.env: dict[str, str] = {}
+        self.uv_env: dict[str, str] = {}
+        """Environment for preparing PEP 723 scripts only (harness and task scripts alike),
+        e.g. a read-only toolkit's `UV_INSTALL_DIR` and `UV_CACHE_DIR`. Task commands never
+        see it; explicit values passed to `prepare_uv_script` override it."""
         self._uv_interpreters: dict[str, str] = {}
         self._uv_script_locks: dict[str, asyncio.Lock] = {}
         self._setup_claimed = False
@@ -298,7 +302,9 @@ class Runtime(ABC):
                         f"&& uv sync --script {shlex.quote(path)} -q --no-config "
                         f"&& uv python find --script {shlex.quote(path)} --no-config"
                     )
-                    result = await self.run(["sh", "-c", command], env or {})
+                    result = await self.run(
+                        ["sh", "-c", command], {**self.uv_env, **(env or {})}
+                    )
                     if result.exit_code != 0:
                         raise RuntimeError(
                             "failed to prepare uv script: "
