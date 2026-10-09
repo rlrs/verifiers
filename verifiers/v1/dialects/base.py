@@ -125,12 +125,17 @@ def append_user_notice(
             continue
         content = message.get("content")
         if isinstance(content, list):
-            if not any(isinstance(item, dict) and item.get("text") == CAPABILITY_NOTICE for item in content):
+            if not any(
+                isinstance(item, dict) and item.get("text") == CAPABILITY_NOTICE
+                for item in content
+            ):
                 message["content"] = [*content, part]
         elif isinstance(content, str):
             if CAPABILITY_NOTICE not in content:
                 message["content"] = (
-                    f"{content}\n\n{CAPABILITY_NOTICE}" if content else CAPABILITY_NOTICE
+                    f"{content}\n\n{CAPABILITY_NOTICE}"
+                    if content
+                    else CAPABILITY_NOTICE
                 )
         else:
             message["content"] = [part]
@@ -143,7 +148,11 @@ def append_user_notice(
     # prefix-cache reuse and the exact-token trajectory graph. Anchor it before
     # that history, after any leading system/developer instructions.
     index = 0
-    while index < len(messages) and isinstance(messages[index], dict) and messages[index].get("role") in ("system", "developer"):
+    while (
+        index < len(messages)
+        and isinstance(messages[index], dict)
+        and messages[index].get("role") in ("system", "developer")
+    ):
         index += 1
     messages.insert(index, message)
 

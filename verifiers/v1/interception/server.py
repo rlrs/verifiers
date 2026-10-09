@@ -677,8 +677,12 @@ class InterceptionServer(Interception):
             # Generate and commit exact token/logprob evidence once, then expose
             # the completed response as SSE for streaming-only agent SDKs.
             served = (
-                web.Response(body=b"".join(dialect.stream_events(response.raw or {})), content_type="text/event-stream")
-                if buffered_train_stream else _completion_response(response.raw)
+                web.Response(
+                    body=b"".join(dialect.stream_events(response.raw or {})),
+                    content_type="text/event-stream",
+                )
+                if buffered_train_stream
+                else _completion_response(response.raw)
             )
             if idempotent is not None:
                 idempotent.response = _capture_response(served)
@@ -749,7 +753,9 @@ class InterceptionServer(Interception):
                 except ContextLimitReached as e:
                     # Native agents can compact and retry a rejected prompt. No
                     # tokens were sampled, so preserve the live rollout for them.
-                    if not getattr(session.trace.agent.config.harness, "compaction", None):
+                    if not getattr(
+                        session.trace.agent.config.harness, "compaction", None
+                    ):
                         session.trace.stop("max_context_tokens")
                     return web.json_response(dialect.error_body(str(e)), status=400)
                 except RolloutError as e:

@@ -782,15 +782,20 @@ def harbor_cache_config(config: HarborConfig) -> dict:
 
 def load_harbor_data_cache(path: Path, config: HarborConfig) -> Iterator[HarborData]:
     import json
+
     with path.open() as handle:
         header = json.loads(next(handle))
-        if header.get("version") != 1 or header.get("config") != harbor_cache_config(config):
+        if header.get("version") != 1 or header.get("config") != harbor_cache_config(
+            config
+        ):
             raise ValueError(f"Harbor task cache configuration mismatch: {path}")
         count = 0
         for line in handle:
             data = HarborData.model_validate_json(line)
             if data.idx != count:
-                raise ValueError(f"Nonsequential Harbor task cache at row {count}: {path}")
+                raise ValueError(
+                    f"Nonsequential Harbor task cache at row {count}: {path}"
+                )
             yield data
             count += 1
         if count != header["tasks"]:

@@ -50,7 +50,11 @@ class OpenCodeHarness(ACPHarness[OpenCodeHarnessConfig]):
             "autoupdate": False,
             "share": "disabled",
             "permission": "allow",
-            "compaction": {"auto": self.config.compaction, "prune": False, "reserved": 32768},
+            "compaction": {
+                "auto": self.config.compaction,
+                "prune": False,
+                "reserved": 32768,
+            },
             "agent": {"title": {"disable": True}, "summary": {"disable": True}},
             "provider": {
                 "intercept": {

@@ -204,7 +204,14 @@ class PiHarness(ACPHarness[PiHarnessConfig]):
         env["PI_ACP_PI_COMMAND"] = pi_wrapper
         return ACPConfig(
             env=env,
-            command=["sh", "-eu", "-c", f'export PATH="{NODE_BIN_DIR}:$PATH"; exec "$@"', "pi", *ACP_COMMAND],
+            command=[
+                "sh",
+                "-eu",
+                "-c",
+                f'export PATH="{NODE_BIN_DIR}:$PATH"; exec "$@"',
+                "pi",
+                *ACP_COMMAND,
+            ],
             prompt=prompt,
             # Pi's extension owns the task-scoped MCP configuration.
             mcp_urls={},

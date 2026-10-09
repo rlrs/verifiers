@@ -44,7 +44,9 @@ class CreationLimiter:
                 now = time.time()
                 cursor = float(data) if data else 0.0
                 if not math.isfinite(cursor) or cursor < 0:
-                    raise ValueError(f"Invalid creation limiter timestamp in {self._path}")
+                    raise ValueError(
+                        f"Invalid creation limiter timestamp in {self._path}"
+                    )
                 slot = max(now, cursor)
                 wait = slot - now
                 if wait > 5 * 60:

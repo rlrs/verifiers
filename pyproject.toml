@@ -205,6 +205,18 @@ Documentation = "https://github.com/primeintellect-ai/verifiers"
 Repository = "https://github.com/primeintellect-ai/verifiers.git"
 Issues = "https://github.com/primeintellect-ai/verifiers/issues"
 
+[tool.ruff.format]
+# Bundled into the bash harness program: kept byte-identical to the program the
+# LUMI RL runs used, so its script digest (offline bundles, uv toolkits) holds.
+exclude = [
+    "verifiers/v1/harnesses/utils/compaction.py",
+    "verifiers/v1/harnesses/utils/core.py",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Byte-identical to the LUMI runs' bash program (see [tool.ruff.format]).
+"verifiers/v1/harnesses/utils/compaction.py" = ["I001"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["verifiers"]
 
