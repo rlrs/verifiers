@@ -23,9 +23,9 @@ from verifiers.v1.graph import PendingTurn
 from verifiers.v1.types import (
     AssistantMessage,
     FinishReason,
-    KeptTokens,
     Response,
     SamplingConfig,
+    SamplingMask,
     Tool,
     ToolCall,
     TurnTokens,
@@ -161,8 +161,8 @@ def response_from_generate(
             multi_modal_data=result.get("multi_modal_data"),
             mm_token_type_id_map=mm_token_type_id_map,
             routed_experts=result.get("routed_experts"),
-            kept_tokens=KeptTokens(**kept)
-            if (kept := result.get("kept_tokens"))
+            sampling_mask=SamplingMask.from_sampling_mask(mask)
+            if (mask := result.get("sampling_mask"))
             else None,
         ),
     )
@@ -363,6 +363,7 @@ class TrainClient(Client):
         model = body["model"]
         sampling_params = sampling.wire_args()
         chat_template_kwargs = sampling_params.pop("chat_template_kwargs", None)
+        cache_salt = sampling_params.pop("cache_salt", None)
         pool = ElasticRendererPool(
             self.config.renderer_model_name or model,
             self.config.renderer,
@@ -431,6 +432,7 @@ class TrainClient(Client):
                     prompt_attribution=prompt_attribution,
                     tools=wire_tools,
                     sampling_params=sampling_params,
+                    cache_salt=cache_salt,
                     extra_headers={SESSION_ID_HEADER: session_id}
                     if session_id
                     else None,

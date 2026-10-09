@@ -84,6 +84,13 @@ from verifiers.v1.runtimes import (
     RuntimeProcess,
     SubprocessConfig,
 )
+from verifiers.v1.semantic import (
+    ACP_SEMANTIC_EDGES_METADATA_KEY,
+    ACPInfo,
+    ParentLink,
+    SemanticEdge,
+    SemanticEdgeSet,
+)
 from verifiers.v1.state import State, StateT
 from verifiers.v1.task import Task, TaskData, TaskResources, TaskTimeout, WireTaskData
 from verifiers.v1.taskset import Taskset
@@ -111,7 +118,6 @@ from verifiers.v1.types import (
     ContentPart,
     ImageUrlContentPart,
     ImageUrlSource,
-    KeptTokens,
     Message,
     MessageContent,
     Messages,
@@ -119,6 +125,7 @@ from verifiers.v1.types import (
     Response,
     Sampling,
     SamplingConfig,
+    SamplingMask,
     SystemMessage,
     TextContentPart,
     Tool,
@@ -228,6 +235,11 @@ __all__ = [  # noqa: RUF022 - grouped by public API area
     "EvalRunInfo",
     "EvalWorkInfo",
     "ModelCall",
+    "ACPInfo",
+    "ACP_SEMANTIC_EDGES_METADATA_KEY",
+    "ParentLink",
+    "SemanticEdge",
+    "SemanticEdgeSet",
     "PolicyEvent",
     "TrainRunInfo",
     "TrainWorkInfo",
@@ -239,7 +251,7 @@ __all__ = [  # noqa: RUF022 - grouped by public API area
     "MessageNode",
     "Branch",
     "TurnTokens",
-    "KeptTokens",
+    "SamplingMask",
     "Timing",
     "TimeSpan",
     "TimeSplit",

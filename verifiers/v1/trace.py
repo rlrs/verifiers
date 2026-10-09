@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import time
 import traceback
 import uuid
@@ -17,17 +18,18 @@ if TYPE_CHECKING:
 from verifiers.v1 import graph
 from verifiers.v1.configs.agent import AgentConfig, WireAgentConfig
 from verifiers.v1.errors import ProviderError
-from verifiers.v1.graph import MessageNode
+from verifiers.v1.graph import RECORD_FLOAT_DECIMALS, MessageNode
 from verifiers.v1.runtimes import RuntimeInfo
+from verifiers.v1.semantic import ACPInfo, ParentLink, SemanticEdgeSet
 from verifiers.v1.state import State, StateT
 from verifiers.v1.task import DataT, WireTaskData
 from verifiers.v1.types import (
     AssistantMessage,
     FinishReason,
-    KeptTokens,
     Message,
     Messages,
     Sampling,
+    SamplingMask,
     Tool,
     ToolMessage,
     Usage,
@@ -43,7 +45,7 @@ EXCLUDE_FIELDS: dict = {
         "__all__": {
             "multi_modal_data",
             "routed_experts",
-            "kept_tokens",
+            "sampling_mask",
         }
     }
 }
@@ -171,6 +173,8 @@ class ModelCall(BaseModel):
     """The failure that ended this call, coupled to the exchange that caused it."""
     policy: PolicyEvent | None = None
     """Policy mediation applied to the request before this call."""
+    acp: ACPInfo | None = None
+    """Metadata advertised by the ACP harness for this model request."""
 
 
 def min_new_input_tokens(calls: Iterable[ModelCall]) -> Iterator[tuple[ModelCall, int]]:
@@ -188,11 +192,13 @@ def min_new_input_tokens(calls: Iterable[ModelCall]) -> Iterator[tuple[ModelCall
 
 
 class Branch(BaseModel):
-    """A root-to-leaf graph path; each branch becomes one training sample."""
+    """A root-to-leaf message-graph path; each branch becomes one training sample."""
 
     index: int
     nodes: list[MessageNode]
     calls: list[ModelCall] = Field(default_factory=list)
+    trainable: bool = True
+    """Whether this physical path contributes a training sample."""
     mm_token_type_id_map: dict[int, int] = Field(default_factory=dict)
     """The trace's `mm_token_type_id_map`, carried so `mm_token_type_ids` is self-contained."""
 
@@ -264,6 +270,20 @@ class Branch(BaseModel):
             return None
         return self.spread(lambda node: node.reference_logprobs)
 
+    @property
+    def trainer_logprobs(self) -> list[float] | None:
+        """Trainer-recomputed logprobs aligned to `token_ids`, or None when unannotated."""
+        if all(node.trainer_logprobs is None for node in self.nodes):
+            return None
+        return self.spread(lambda node: node.trainer_logprobs)
+
+    @property
+    def entropies(self) -> list[float] | None:
+        """Trainer policy entropies aligned to `token_ids`, or None when unannotated."""
+        if all(node.entropies is None for node in self.nodes):
+            return None
+        return self.spread(lambda node: node.entropies)
+
     def loss_weights(self, name: str) -> list[float] | None:
         """One named loss-weight stream aligned to `token_ids`, or None when absent."""
         if all(
@@ -322,28 +342,25 @@ class Branch(BaseModel):
         return merged if merged.shape[0] == total else None
 
     @property
-    def kept_tokens(self) -> KeptTokens | None:
-        """int32 kept-set `counts` aligned 1:1 with `token_ids` plus flat `ids` in
-        position order; partial data scatters as 0 counts, no data returns None."""
-        if all(n.kept_tokens is None for n in self.nodes):
+    def sampling_mask(self) -> SamplingMask | None:
+        """Sampling masks aligned to this branch's token ids."""
+        if all(n.sampling_mask is None for n in self.nodes):
             return None
-        # `_attribute_kept_tokens` validates counts/ids against the node's sampled
-        # tokens before setting the field, so this is a straight scatter+concat
-        # (a corrupted node would fail loudly on the scatter shape mismatch).
+        # Attribution validates each mask against the node's sampled positions.
         ids_parts: list[np.ndarray] = []
         counts_parts: list[np.ndarray] = []
         for node in self.nodes:
             counts = np.zeros(len(node.mask), dtype=np.int32)
-            if node.kept_tokens is not None and len(node.kept_tokens.counts):
-                counts[np.nonzero(node.mask)[0]] = node.kept_tokens.counts
-                ids_parts.append(node.kept_tokens.ids)
+            if node.sampling_mask is not None and len(node.sampling_mask.counts):
+                counts[np.nonzero(node.mask)[0]] = node.sampling_mask.counts
+                ids_parts.append(node.sampling_mask.ids)
             counts_parts.append(counts)
         ids = (
             np.concatenate(ids_parts).astype(np.int32, copy=False)
             if ids_parts
             else np.zeros(0, dtype=np.int32)
         )
-        return KeptTokens(ids=ids, counts=np.concatenate(counts_parts))
+        return SamplingMask(ids=ids, counts=np.concatenate(counts_parts))
 
     @property
     def usage(self) -> Usage | None:
@@ -387,7 +404,7 @@ class Trace(BaseModel, Generic[DataT, StateT, AgentConfigT]):
     """The tools advertised to the agent, automatically recorded from last intercepted turn."""
 
     nodes: list[MessageNode] = Field(default_factory=list)
-    """The message graph; branches are derived views and storage stays linear in turns."""
+    """The message graph, including physical and semantic parent links."""
     calls: list[ModelCall] = Field(default_factory=list)
     """Every model call; automatically recorded at intercept time + linked into `nodes`."""
     mm_token_type_id_map: dict[int, int] = Field(default_factory=dict)
@@ -473,8 +490,18 @@ class Trace(BaseModel, Generic[DataT, StateT, AgentConfigT]):
 
     @property
     def branches(self) -> list[Branch]:
-        """One root-to-leaf path per graph leaf, its calls attached in path order."""
+        """One root-to-leaf view per graph leaf, with no duplicated node storage.
+
+        A compaction attempt is a dangling physical leaf. It is trainable only when
+        the final semantic graph shows that the harness resumed from it.
+        """
         by_node = {c.node: c for c in self.calls if c.node is not None}
+        accepted_compaction_attempts = {
+            link.node
+            for node in self.nodes
+            for link in node.semantic_parents
+            if link.type == "compaction"
+        }
         branches: list[Branch] = []
         for i, leaf in enumerate(graph.leaves(self)):
             path: list[int] = []
@@ -483,15 +510,89 @@ class Trace(BaseModel, Generic[DataT, StateT, AgentConfigT]):
                 path.append(nid)
                 nid = self.nodes[nid].parent
             path.reverse()
+            is_compaction_attempt = any(
+                link.type == "compaction_attempt"
+                for link in self.nodes[leaf].semantic_parents
+            )
             branches.append(
                 Branch(
                     index=i,
                     nodes=[self.nodes[n] for n in path],
                     calls=[by_node[n] for n in path if n in by_node],
+                    trainable=(
+                        not is_compaction_attempt
+                        or leaf in accepted_compaction_attempts
+                    ),
                     mm_token_type_id_map=self.mm_token_type_id_map,
                 )
             )
         return branches
+
+    def add_semantic_edges(self, edge_set: SemanticEdgeSet) -> None:
+        """Add newly advertised ACP edges; cumulative replays are idempotent."""
+        node_by_request: dict[str, int] = {}
+        for call in self.calls:
+            if call.acp is None or call.node is None:
+                continue
+            if not 0 <= call.node < len(self.nodes):
+                raise ValueError(f"model call has invalid message node {call.node}")
+            if not self.nodes[call.node].sampled:
+                raise ValueError(f"model call node {call.node} is not sampled")
+            # SDK retries are sequential. If more than one attempt commits, the last
+            # sampled response is the logical request result consumed by the harness.
+            node_by_request[call.acp.request_id] = call.node
+
+        resolved_identities: set[tuple[int, int, str]] = set()
+        additions: list[tuple[int, ParentLink]] = []
+        pending_parents: dict[int, list[ParentLink]] = {}
+        for edge in edge_set.edges:
+            endpoints: list[int] = []
+            for request_id in (
+                edge.source_request_id,
+                edge.target_request_id,
+            ):
+                node = node_by_request.get(request_id)
+                if node is None:
+                    raise ValueError(
+                        f"semantic edge request {request_id!r} has no committed message node"
+                    )
+                endpoints.append(node)
+            source, target = endpoints
+            if source == target:
+                raise ValueError("semantic edge resolves to the same message node")
+            identity = (source, target, edge.type)
+            if identity in resolved_identities:
+                raise ValueError(f"duplicate resolved semantic edge: {identity!r}")
+            resolved_identities.add(identity)
+            link = ParentLink(node=source, type=edge.type)
+            if link in self.nodes[target].semantic_parents:
+                continue
+
+            # Adding source -> target creates a cycle exactly when target is already an
+            # ancestor of source. Walk parent links directly so existing nodes and links
+            # are never rebuilt as cumulative ACP edge sets arrive.
+            stack = [source]
+            visited: set[int] = set()
+            while stack:
+                node_id = stack.pop()
+                if node_id == target:
+                    raise ValueError(
+                        "semantic edges create a cycle in the message graph"
+                    )
+                if node_id in visited:
+                    continue
+                visited.add(node_id)
+                node = self.nodes[node_id]
+                if node.parent is not None:
+                    stack.append(node.parent)
+                stack.extend(parent.node for parent in node.semantic_parents)
+                stack.extend(parent.node for parent in pending_parents.get(node_id, ()))
+
+            additions.append((target, link))
+            pending_parents.setdefault(target, []).append(link)
+
+        for target, link in additions:
+            self.nodes[target].semantic_parents.append(link)
 
     @property
     def messages(self) -> Messages:
@@ -588,8 +689,26 @@ class Trace(BaseModel, Generic[DataT, StateT, AgentConfigT]):
         reward = Reward(score=float(value), weight=float(weight))
         self.rewards[name] = reward
 
-    def record_judge(self, response: JudgeResponse) -> None:
-        self.info.setdefault("judge", []).append(response.model_dump())
+    def record_judge_call(
+        self,
+        *,
+        name: str,
+        request: Mapping[str, Any],
+        response: JudgeResponse,
+    ) -> None:
+        """Record one complete judge request/response exchange."""
+        response_record = response.model_dump()
+        message = AssistantMessage(content=response_record.pop("text"))
+        self.info.setdefault("judge_calls", []).append(
+            {
+                "name": name,
+                "request": copy.deepcopy(dict(request)),
+                "response": {
+                    "message": message.model_dump(),
+                    **response_record,
+                },
+            }
+        )
         if response.usage is not None:
             self.extra_usage.append(response.usage)
 
@@ -625,9 +744,16 @@ class Trace(BaseModel, Generic[DataT, StateT, AgentConfigT]):
         self.ok = False
         self.stop("error")
 
-    def to_record(self) -> dict[str, Any]:
-        """JSON record without raw tensors, which remain available on the msgpack wire."""
-        return self.model_dump(mode="json", exclude=EXCLUDE_FIELDS)
+    def to_record(
+        self, float_decimals: int | None = RECORD_FLOAT_DECIMALS
+    ) -> dict[str, Any]:
+        """JSON record without raw tensors, which remain available on the msgpack wire.
+        Per-token float streams are rounded to `float_decimals` (`None` keeps every digit)."""
+        return self.model_dump(
+            mode="json",
+            exclude=EXCLUDE_FIELDS,
+            context={"float_decimals": float_decimals},
+        )
 
 
 WireTrace = Trace[WireTaskData, State, WireAgentConfig]

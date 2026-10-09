@@ -1,9 +1,7 @@
 """Every checked-in v1 eval config parses.
 
 Mirrors prime-rl's config test: glob the configs and assert each validates into its config
-type. The root `configs/*.toml` are the `uv run eval @ <file>` v1 configs (EvalConfig);
-`endpoints.toml` isn't an eval config, and `configs/eval|rl|gepa/` are the legacy
-`vf-eval` / training formats (different, non-v1 config classes), so both are out of scope here.
+type. The root `configs/*.toml` are the `uv run eval @ <file>` v1 configs (EvalConfig).
 """
 
 import sys
@@ -27,11 +25,7 @@ from verifiers.v1.interception import (
 )
 from verifiers.v1.runtimes import make_runtime, runtime_is_local
 
-CONFIGS = sorted(
-    p
-    for p in (Path(__file__).resolve().parents[2] / "configs").glob("*.toml")
-    if p.name != "endpoints.toml"
-)
+CONFIGS = sorted((Path(__file__).resolve().parents[2] / "configs").glob("*.toml"))
 
 
 @pytest.mark.parametrize("path", CONFIGS, ids=lambda p: p.name)
