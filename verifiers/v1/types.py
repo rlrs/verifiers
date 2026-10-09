@@ -218,6 +218,8 @@ class TurnTokens(BaseModel):
     prompt_ids: list[int] = Field(default_factory=list)
     completion_ids: list[int] = Field(default_factory=list)
     completion_logprobs: list[float] = Field(default_factory=list)
+    sampler_topk_ids: Any = Field(default=None, exclude=True)
+    sampler_topk_logprobs: Any = Field(default=None, exclude=True)
 
     # Transient carrier (excluded): per-message token spans into `prompt_ids` from the renderer,
     # consumed by the turn's `commit` to attribute tokens per message, then dropped.

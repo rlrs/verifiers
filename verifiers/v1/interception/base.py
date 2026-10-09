@@ -29,6 +29,12 @@ class BaseInterceptionConfig(BaseConfig):
 
     type: str
 
+    def host_tunnel(self):
+        """Transport for host tool servers, scoped to this environment."""
+        from verifiers.v1.interception.tunnel import PrimeTunnelConfig, make_tunnel
+
+        return make_tunnel(getattr(self, "tunnel", PrimeTunnelConfig()))
+
     @model_validator(mode="wrap")
     @classmethod
     def _resolve_interception(cls, value, handler):

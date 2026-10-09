@@ -18,7 +18,7 @@ from verifiers.v1.clients.client import SESSION_ID_HEADER, Client
 from verifiers.v1.configs.client import TrainClientConfig
 from verifiers.v1.dialects import FINISH_REASONS, ChatDialect, Dialect, parse_tools
 from verifiers.v1.dialects.chat import message_to_wire
-from verifiers.v1.errors import ProviderError, model_error
+from verifiers.v1.errors import ContextLimitReached, model_error
 from verifiers.v1.graph import PendingTurn
 from verifiers.v1.types import (
     AssistantMessage,
@@ -156,6 +156,8 @@ def response_from_generate(
             prompt_ids=prompt_ids,
             completion_ids=completion_ids,
             completion_logprobs=result.get("completion_logprobs") or [],
+            sampler_topk_ids=result.get("sampler_topk_ids"),
+            sampler_topk_logprobs=result.get("sampler_topk_logprobs"),
             message_spans=message_spans,
             is_content=attribution.is_content if attribution is not None else None,
             multi_modal_data=result.get("multi_modal_data"),
@@ -440,7 +442,7 @@ class TrainClient(Client):
             except OverlongPromptError as e:
                 # The renderer's pre-flight overflow never reached the provider: a
                 # deterministic 400, so the harness SDK never retries it.
-                raise ProviderError(str(e), status_code=400) from e
+                raise ContextLimitReached(str(e)) from e
             except OpenAIError as e:
                 raise model_error(e) from e
         response = response_from_generate(

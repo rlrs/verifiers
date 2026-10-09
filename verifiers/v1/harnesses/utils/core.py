@@ -3,6 +3,8 @@
 import argparse
 import asyncio
 import json
+import os
+import signal
 import subprocess
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -137,16 +139,27 @@ def run_search(query: str, api_key: str, num_results: int = 5) -> str:
         return f"search failed ({e}). Try again or rephrase the query."
 
 
-def run_bash(command: str) -> str:
+def run_bash(command: str, timeout: float = 600.0) -> str:
     try:
-        result = subprocess.run(
+        with subprocess.Popen(
             ["bash", "-c", command],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=3600,
-            check=False,
-        )
-        return result.stdout + result.stderr
+            start_new_session=True,
+        ) as process:
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+                return stdout + stderr
+            except subprocess.TimeoutExpired:
+                # Kill the command's process group, including children that still
+                # hold the output pipes open. The harness stays outside this group.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                stdout, stderr = process.communicate()
+                return stdout + stderr + f"\nerror: command exceeded {timeout:g}s and was terminated"
     except Exception as e:  # noqa: BLE001 - tool failures are returned to the model
         return f"error: {e}"
 
@@ -188,10 +201,13 @@ async def chat(
     tools: list[dict],
     *,
     tool_choice: str | None = None,
+    request_id: str | None = None,
 ):
     kwargs = {"model": model, "messages": messages, "tools": tools or None}
     if tools and tool_choice is not None:
         kwargs["tool_choice"] = tool_choice
+    if request_id is not None:
+        kwargs["extra_headers"] = {"X-ACP-Model-Request-ID": request_id}
     return await client.chat.completions.create(**kwargs)
 
 
@@ -276,7 +292,7 @@ async def run_chat_loop(
                     content = await call_mcp(servers, dispatch, name, tool_args)
                 elif name == "bash" and args.bash:
                     content = await asyncio.to_thread(
-                        run_bash, tool_args.get("command", "")
+                        run_bash, tool_args.get("command", ""), args.bash_timeout
                     )
                 elif name == "edit" and args.edit:
                     content = await asyncio.to_thread(
@@ -327,7 +343,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mcp-config", default="")
     parser.add_argument("--tool-interception-url", default="")
     parser.add_argument("--bash", action="store_true")
+    parser.add_argument("--bash-timeout", type=float, default=600.0)
     parser.add_argument("--compaction", action="store_true")
+    parser.add_argument("--semantic-edges-file")
     parser.add_argument("--summarize-at-tokens", type=int)
     parser.add_argument("--edit", action="store_true")
     parser.add_argument("--search", action="store_true")
@@ -386,6 +404,7 @@ async def main() -> None:
             tools,
             args.compaction,
             args.summarize_at_tokens,
+            semantic_edges_file=args.semantic_edges_file,
         )
         if compactor.enabled and compactor.threshold is None:
             compactor.threshold = await discover_threshold(client, args.model)

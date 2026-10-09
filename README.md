@@ -42,3 +42,8 @@ Originally created by Will Brown ([@willccbb](https://github.com/willccbb)).
   year         = {2025}
 }
 ```
+
+For restricted-network interception, a synthetic user notice is anchored after
+leading system/developer instructions when no user message exists. Keep this
+placement stable and idempotent across turns to preserve prompt-prefix caching;
+provider-side capability restrictions are enforced separately.

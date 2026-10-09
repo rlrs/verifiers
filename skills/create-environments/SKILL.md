@@ -250,3 +250,17 @@ prime env push my-task-v1 --visibility PRIVATE
 ```
 
 Publishing is an external state change and requires the user's requested visibility. Do not publish merely because local verification passed.
+
+## Runtime acceptance checks
+
+Construct the environment with `load_environment` in addition to iterating its
+rows. `Taskset.task_type()` is a framework class method inferred from generics;
+do not shadow it with a task-class attribute. Row loading alone will miss this
+incompatibility because environment startup uses the method to discover tools.
+
+For relay-only remote harnesses, stage pinned dependencies and make installation
+helpers recognize an already-installed version before invoking package managers.
+ACP requires a persistent session: a parkable backend must preserve that session
+inside its managed job rather than relying on a live exec stream. Validate a real
+tool round-trip across at least two parks, plus cancellation and captured traces,
+before enabling a new harness in training.

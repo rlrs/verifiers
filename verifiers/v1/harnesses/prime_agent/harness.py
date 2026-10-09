@@ -9,6 +9,7 @@ from verifiers.v1.acp import ACPConfig, ACPHarness, ACPTurn
 from verifiers.v1.clients import ModelContext
 from verifiers.v1.configs.harness import HarnessConfig
 from verifiers.v1.harnesses.node import NODE_BIN_DIR, ensure_node
+from verifiers.v1.harnesses.search_tools import check_offline_search_tools
 from verifiers.v1.harnesses.utils.install import ensure_installed, remove_dir
 from verifiers.v1.runtimes import Runtime
 from verifiers.v1.task import TaskData
@@ -88,6 +89,9 @@ PRIME_AGENT_BOOTSTRAP_TOOLS_ON_INSTALL=1 npm install -g \
 
 
 class PrimeAgentHarnessConfig(HarnessConfig):
+    compaction: bool = False
+    """Enable native context compaction, reserving 32K tokens for generation."""
+
     commit: Literal["81ae3cb34d27d38ee37f9e205a1e73694993b344"] = PRIME_AGENT_COMMIT
     """Prime Agent main commit to install."""
 
@@ -157,6 +161,7 @@ class PrimeAgentHarness(ACPHarness[PrimeAgentHarnessConfig]):
     async def setup(self, runtime: Runtime) -> None:
         await self.install_skills(runtime, SKILLS_DIR)
         await ensure_node(runtime)
+        await check_offline_search_tools(runtime)
         logger.info("prime-agent: ensuring commit %s is installed", self.config.commit)
         await ensure_installed(
             runtime,
@@ -220,6 +225,8 @@ class PrimeAgentHarness(ACPHarness[PrimeAgentHarnessConfig]):
                     "models": [
                         {
                             "id": ctx.model,
+                            "contextWindow": 131072,
+                            "maxTokens": ctx.sampling.max_tokens or 16384,
                             "reasoning": reasoning,
                             "input": ["text", "image"],
                         }
@@ -227,6 +234,19 @@ class PrimeAgentHarness(ACPHarness[PrimeAgentHarnessConfig]):
                 }
             }
         }
+        await runtime.write(
+            f"{agent_dir}/settings.json",
+            json.dumps(
+                {
+                    "autoRefine": {"enabled": False},
+                    "compaction": {
+                        "enabled": self.config.compaction,
+                        "reserveTokens": 32768,
+                        "keepRecentTokens": 16384,
+                    },
+                }
+            ).encode(),
+        )
         models_path = f"{agent_dir}/models.json"
         await runtime.write(models_path, json.dumps(models).encode())
         secured = await runtime.run(["chmod", "600", models_path], {})

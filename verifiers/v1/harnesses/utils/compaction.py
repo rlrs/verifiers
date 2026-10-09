@@ -1,5 +1,9 @@
 """Tool-output bounding and context compaction for bundled chat programs."""
 
+import json
+from pathlib import Path
+from uuid import uuid4
+
 from typing import TYPE_CHECKING
 
 from openai import APIError, APIStatusError, AsyncOpenAI
@@ -155,16 +159,47 @@ def context_tokens(completion) -> int:
 class Compactor:
     """Compact once and retry once when a model turn exhausts its context."""
 
-    def __init__(self, client, model, tools, enabled, threshold):
+    def __init__(self, client, model, tools, enabled, threshold, semantic_edges_file=None):
         self.client = client
         self.model = model
         self.tools = tools
         self.enabled = enabled
         self.threshold = threshold
+        self.semantic_edges_file = semantic_edges_file
+        self.edges = []
+        self.last_request_id = None
+        self.last_summary_id = None
+        self.pending_summary_id = None
         self.compacted = False
         self.last_good = 0
         """Message count of the newest state that passed a threshold check - by
         definition a state with a full reserve of room, so a checkpoint over it fits."""
+
+    def save_edges(self):
+        if self.semantic_edges_file is not None:
+            Path(self.semantic_edges_file).write_text(json.dumps({"edges": self.edges}))
+
+    async def request(self, messages, *, summary=False):
+        request_id = uuid4().hex if self.semantic_edges_file is not None else None
+        completion = await chat(
+            self.client, self.model, messages, self.tools,
+            tool_choice="none" if summary else None, request_id=request_id,
+        )
+        if request_id is not None:
+            parent = self.last_request_id if summary else self.pending_summary_id
+            if parent is not None:
+                self.edges.append({
+                    "source_request_id": parent,
+                    "target_request_id": request_id,
+                    "type": "compaction_attempt" if summary else "compaction",
+                })
+            if summary:
+                self.last_summary_id = request_id
+            else:
+                self.last_request_id = request_id
+                self.pending_summary_id = None
+            self.save_edges()
+        return completion
 
     def reached(self, completion, extra_tokens: int = 0) -> bool:
         return (
@@ -178,7 +213,7 @@ class Compactor:
 
     async def complete(self, messages: list[dict]):
         try:
-            completion = await chat(self.client, self.model, messages, self.tools)
+            completion = await self.request(messages)
         except APIStatusError as error:
             if (
                 not self.enabled
@@ -206,7 +241,7 @@ class Compactor:
 
         messages = await self.compact(messages)
         try:
-            completion = await chat(self.client, self.model, messages, self.tools)
+            completion = await self.request(messages)
         except APIStatusError as error:
             # The rebuilt conversation is sized to fit, so this is out of moves.
             if is_context_overflow(error):
@@ -228,13 +263,7 @@ class Compactor:
                 {"role": "user", "content": CHECKPOINT_COMPACTION_PROMPT},
             ]
             try:
-                completion = await chat(
-                    self.client,
-                    self.model,
-                    checkpoint,
-                    self.tools,
-                    tool_choice="none",
-                )
+                completion = await self.request(checkpoint, summary=True)
             except APIStatusError as error:
                 if not is_context_overflow(error):
                     raise
@@ -249,6 +278,7 @@ class Compactor:
                 framed = POST_COMPACTION_FRAMING + "\n\n" + text
                 rebuilt = [*system, {"role": "user", "content": framed}]
                 self.note_good(rebuilt)
+                self.pending_summary_id = self.last_summary_id
                 self.compacted = True
                 return rebuilt
         raise CompactionFailed(

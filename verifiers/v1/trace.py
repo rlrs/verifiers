@@ -46,6 +46,8 @@ EXCLUDE_FIELDS: dict = {
             "multi_modal_data",
             "routed_experts",
             "sampling_mask",
+            "sampler_topk_ids",
+            "sampler_topk_logprobs",
         }
     }
 }

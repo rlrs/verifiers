@@ -42,6 +42,10 @@ class ProviderError(RolloutError):
         self.status_code = status_code
 
 
+class ContextLimitReached(RolloutError):
+    """The rendered model context has no room for another response."""
+
+
 class HarnessError(RolloutError):
     """The harness failed to install or launch, or its agent process exited unsuccessfully."""
 

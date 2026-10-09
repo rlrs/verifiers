@@ -156,6 +156,8 @@ class MessageNode(BaseModel):
     the turn's `generate` payload by `_attribute_routed_experts`; `Branch.routed_experts`
     concatenates these along the path into the trainer's router-replay input. Rides the wire as
     a raw-bytes `__nd__` dict; kept off disk by the dump-site `exclude` in prime-rl."""
+    sampler_topk_ids: SkipJsonSchema[np.ndarray | None] = None
+    sampler_topk_logprobs: SkipJsonSchema[np.ndarray | None] = None
     sampling_mask: SkipJsonSchema[SamplingMask | None] = None
     """Sampling masks for this node's sampled tokens.
 
@@ -225,12 +227,14 @@ class MessageNode(BaseModel):
             },
         )
 
-    @field_serializer("routed_experts")
+    @field_serializer("routed_experts", "sampler_topk_ids", "sampler_topk_logprobs")
     def serialize_ndarray_field(self, arr: np.ndarray | None) -> dict | None:
         """Integer array -> raw-bytes `__nd__` dict so it rides the wire (numpy can't JSON)."""
         return None if arr is None else _encode_ndarray(arr)
 
-    @field_validator("routed_experts", mode="before")
+    @field_validator(
+        "routed_experts", "sampler_topk_ids", "sampler_topk_logprobs", mode="before"
+    )
     @classmethod
     def deserialize_ndarray_field(cls, value: Any) -> np.ndarray | None:
         if value is None or isinstance(value, np.ndarray):
@@ -801,6 +805,20 @@ def _commit_turn(turn: PendingTurn, response: Response) -> int:
     _attribute_routed_experts(
         trace, new_node_ids, path_len, tokens.routed_experts if tokens else None
     )
+
+    if tokens is not None and tokens.sampler_topk_ids is not None:
+        ids, logps = tokens.sampler_topk_ids, tokens.sampler_topk_logprobs
+        if (
+            logps is None
+            or ids.ndim != 2
+            or ids.shape != logps.shape
+            or ids.shape[0] != sum(trace.nodes[assistant_id].mask)
+        ):
+            raise ValueError(
+                "Sampler top-k data must align exactly with sampled assistant tokens"
+            )
+        trace.nodes[assistant_id].sampler_topk_ids = ids
+        trace.nodes[assistant_id].sampler_topk_logprobs = logps
 
     # Sampling masks are completion-aligned, so only the sampled node carries them.
     _attribute_sampling_mask(

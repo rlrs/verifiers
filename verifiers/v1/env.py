@@ -354,29 +354,32 @@ class Env(ABC, Generic[ConfigT]):
     async def serving(self):
         """Hold the env-level serving resources for the duration of an eval; plan and
         run slots inside. Torn down on exit (`teardown()`, then the framework's)."""
-        async with self.shared_tools() as shared:
-            interception = make_interception(
-                self.config.interception,
-                requires_tunnel=self._requires_tunnel(shared),
-                state_service_secrets=tuple(
-                    server.state_secret
-                    for server in shared.values()
-                    if server.state_secret
-                ),
-            )
-            async with interception:
-                self._shared_tools = shared
-                self._interception = interception
-                try:
-                    await self.start()
-                    yield
-                finally:
+        from verifiers.v1.interception.tunnel import using_host_tunnel
+
+        with using_host_tunnel(self.config.interception.host_tunnel):
+            async with self.shared_tools() as shared:
+                interception = make_interception(
+                    self.config.interception,
+                    requires_tunnel=self._requires_tunnel(shared),
+                    state_service_secrets=tuple(
+                        server.state_secret
+                        for server in shared.values()
+                        if server.state_secret
+                    ),
+                )
+                async with interception:
+                    self._shared_tools = shared
+                    self._interception = interception
                     try:
-                        # stop() sees what start() saw; the framework unwinds after.
-                        await self.stop()
+                        await self.start()
+                        yield
                     finally:
-                        self._shared_tools = {}
-                        self._interception = None
+                        try:
+                            # stop() sees what start() saw; the framework unwinds after.
+                            await self.stop()
+                        finally:
+                            self._shared_tools = {}
+                            self._interception = None
 
     def _runs_local(self) -> bool:
         """Whether every role's runtime policy is local (any remote role means tunnels)."""

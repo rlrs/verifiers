@@ -10,6 +10,7 @@ run) for the user.
 
 import asyncio
 import fcntl
+import math
 import os
 import time
 from typing import Self
@@ -33,13 +34,18 @@ class CreationLimiter:
     def _reserve(self) -> float:
         os.makedirs(LIMITER_DIR, exist_ok=True)
         # Shared buckets require a clock comparable across hosts and boots.
-        with open(self._path, "a+") as f:
+        # Keep one lock inode; avoid O_APPEND combined with truncation on Lustre.
+        fd = os.open(self._path, os.O_RDWR | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "r+") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 f.seek(0)
-                data = f.read().strip()
+                data = f.read().strip().lstrip("\x00")
                 now = time.time()
-                slot = max(now, float(data) if data else 0.0)
+                cursor = float(data) if data else 0.0
+                if not math.isfinite(cursor) or cursor < 0:
+                    raise ValueError(f"Invalid creation limiter timestamp in {self._path}")
+                slot = max(now, cursor)
                 wait = slot - now
                 if wait > 5 * 60:
                     raise TimeoutError(
@@ -47,8 +53,8 @@ class CreationLimiter:
                         f"exceeds 300s ({self._path})"
                     )
                 f.seek(0)
-                f.truncate()
                 f.write(repr(slot + self._interval))
+                f.truncate()
                 f.flush()
                 return wait
             finally:

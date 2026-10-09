@@ -1,3 +1,4 @@
+import json
 import os
 
 from pydantic import PositiveInt
@@ -11,6 +12,7 @@ from verifiers.v1.harnesses.utils.launch import (
     launch_chat_program,
 )
 from verifiers.v1.runtimes import ProgramResult, Runtime
+from verifiers.v1.semantic import SemanticEdgeSet
 from verifiers.v1.task import TaskData
 from verifiers.v1.trace import Trace
 
@@ -82,11 +84,13 @@ class BashHarness(Harness[BashHarnessConfig]):
             p for p in (" ".join(fragments), system_prompt) if p
         )
         env = {**self.config.resolved_env}
-        args = ["--bash"]
+        args = ["--bash", f"--bash-timeout={self.config.tool_timeout}"]
         if tool_interception_url:
             args.append(f"--tool-interception-url={tool_interception_url}")
+        edges_file = f".vf-bash-edges-{trace.id}.json"
         if self.config.compaction is not None:
-            args.append("--compaction")
+            await runtime.write(edges_file, b'{"edges": []}')
+            args.extend(["--compaction", f"--semantic-edges-file={edges_file}"])
             threshold = self.config.compaction.summarize_at_tokens
             if threshold is not None:
                 args.append(f"--summarize-at-tokens={threshold}")
@@ -110,7 +114,7 @@ class BashHarness(Harness[BashHarnessConfig]):
                     "(the host env or the harness config's env)"
                 )
             args += ["--search", f"--serper-key={serper_key}"]
-        return await launch_chat_program(
+        result = await launch_chat_program(
             CHAT_PROGRAM_SOURCE,
             self.config,
             ctx,
@@ -125,3 +129,8 @@ class BashHarness(Harness[BashHarnessConfig]):
             env=env,
             activate=False,
         )
+
+        if self.config.compaction is not None:
+            edges = json.loads(await runtime.read(edges_file))
+            trace.add_semantic_edges(SemanticEdgeSet.model_validate(edges))
+        return result

@@ -549,14 +549,16 @@ class ChatDialect(Dialect[ChatCompletion]):
 
     def stream_events(self, raw: dict) -> list[bytes]:
         choice = (raw.get("choices") or [{}])[0]
+        delta = dict(choice.get("message") or {"role": "assistant", "content": ""})
+        if delta.get("tool_calls"):
+            delta["tool_calls"] = [{**call, "index": i} for i, call in enumerate(delta["tool_calls"])]
         chunk = {
             **{key: value for key, value in raw.items() if key != "choices"},
             "object": "chat.completion.chunk",
             "choices": [
                 {
                     "index": 0,
-                    "delta": choice.get("message")
-                    or {"role": "assistant", "content": ""},
+                    "delta": delta,
                     "finish_reason": choice.get("finish_reason"),
                 }
             ],

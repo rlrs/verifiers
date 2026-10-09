@@ -1,3 +1,7 @@
+from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from typing import Annotated
 
 from pydantic import Field
@@ -29,3 +33,25 @@ __all__ = [
     "TunnelConfig",
     "make_tunnel",
 ]
+
+
+_host_tunnel: ContextVar[Tunnel | Callable[[], Tunnel] | None] = ContextVar("host_tool_tunnel", default=None)
+
+
+def configured_host_tunnel() -> Tunnel | None:
+    value = _host_tunnel.get()
+    return value() if callable(value) else value
+
+
+def host_tunnel() -> Tunnel:
+    """The serving environment's transport, created only when a tunnel is needed."""
+    return configured_host_tunnel() or PrimeTunnel()
+
+
+@contextmanager
+def using_host_tunnel(tunnel: Tunnel | Callable[[], Tunnel]):
+    token = _host_tunnel.set(tunnel)
+    try:
+        yield
+    finally:
+        _host_tunnel.reset(token)

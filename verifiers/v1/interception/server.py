@@ -48,6 +48,7 @@ from verifiers.v1.dialects.base import (
     is_sse_done_event,
 )
 from verifiers.v1.errors import (
+    ContextLimitReached,
     ProviderError,
     RolloutError,
     TaskError,
@@ -654,8 +655,11 @@ class InterceptionServer(Interception):
         except RolloutError as error:
             return self._fail(session, dialect, error)
 
+        from verifiers.v1.clients.train import TrainClient
+
+        buffered_train_stream = streaming and isinstance(session.client, TrainClient)
         inspect_response = bool(session.response_interceptors or session.response_stops)
-        if streaming:
+        if streaming and not buffered_train_stream:
             return await self._stream(
                 request,
                 session,
@@ -670,7 +674,12 @@ class InterceptionServer(Interception):
             )
 
         def serve(response: Response) -> web.Response:
-            served = _completion_response(response.raw)
+            # Generate and commit exact token/logprob evidence once, then expose
+            # the completed response as SSE for streaming-only agent SDKs.
+            served = (
+                web.Response(body=b"".join(dialect.stream_events(response.raw or {})), content_type="text/event-stream")
+                if buffered_train_stream else _completion_response(response.raw)
+            )
             if idempotent is not None:
                 idempotent.response = _capture_response(served)
                 idempotent.completed_at = time.monotonic()
@@ -737,6 +746,12 @@ class InterceptionServer(Interception):
                             dialect.error_body(f"rollout stopped: {stopped}"),
                             status=400,
                         )
+                except ContextLimitReached as e:
+                    # Native agents can compact and retry a rejected prompt. No
+                    # tokens were sampled, so preserve the live rollout for them.
+                    if not getattr(session.trace.agent.config.harness, "compaction", None):
+                        session.trace.stop("max_context_tokens")
+                    return web.json_response(dialect.error_body(str(e)), status=400)
                 except RolloutError as e:
                     # Stash the real cause; the rollout re-raises it after the harness returns.
                     # Relay the provider's status so the harness SDK retries 5xx/429 and not 4xx.

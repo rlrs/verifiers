@@ -43,6 +43,7 @@ async def ensure_node(runtime: Runtime) -> None:
         runtime,
         directory=NODE_DIR,
         lock=f"{NODE_DIR}.install.lock",
+        ready=f'test -x {NODE_BIN_DIR}/node && test "$({NODE_BIN_DIR}/node --version)" = "v{NODE_VERSION}"',
         install=INSTALL,
         env={"VF_NODE_VERSION": NODE_VERSION},
         label="Node.js",

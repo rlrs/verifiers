@@ -18,7 +18,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from verifiers.v1.configs.runtime import NetworkPolicyConfig
 from verifiers.v1.errors import ToolsetError
-from verifiers.v1.interception.tunnel import PrimeTunnel
+from verifiers.v1.interception.tunnel import host_tunnel
 from verifiers.v1.mcp.server import (
     STATE_ROUTE_PARAM,
     STATE_SIGNATURE_PARAM,
@@ -329,7 +329,7 @@ async def reachable_url(
     elif consumer_is_local:  # local consumer → localhost, no public tunnel
         yield f"http://127.0.0.1:{port}"
     else:  # remote consumer → a host tunnel publishes the port outward
-        async with PrimeTunnel().expose(port) as url:
+        async with host_tunnel().expose(port) as url:
             yield url
 
 

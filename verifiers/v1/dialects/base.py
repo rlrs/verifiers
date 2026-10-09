@@ -125,18 +125,27 @@ def append_user_notice(
             continue
         content = message.get("content")
         if isinstance(content, list):
-            message["content"] = [*content, part]
+            if not any(isinstance(item, dict) and item.get("text") == CAPABILITY_NOTICE for item in content):
+                message["content"] = [*content, part]
         elif isinstance(content, str):
-            message["content"] = (
-                f"{content}\n\n{CAPABILITY_NOTICE}" if content else CAPABILITY_NOTICE
-            )
+            if CAPABILITY_NOTICE not in content:
+                message["content"] = (
+                    f"{content}\n\n{CAPABILITY_NOTICE}" if content else CAPABILITY_NOTICE
+                )
         else:
             message["content"] = [part]
         return
     message = {"role": "user", "content": [part]}
     if message_type is not None:
         message["type"] = message_type
-    messages.append(message)
+    # Some agent requests contain only system + assistant/tool history. A
+    # synthetic user message at the tail would move on every request, breaking
+    # prefix-cache reuse and the exact-token trajectory graph. Anchor it before
+    # that history, after any leading system/developer instructions.
+    index = 0
+    while index < len(messages) and isinstance(messages[index], dict) and messages[index].get("role") in ("system", "developer"):
+        index += 1
+    messages.insert(index, message)
 
 
 def is_sse_done_event(raw: bytes) -> bool:

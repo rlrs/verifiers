@@ -9,6 +9,7 @@ from verifiers.v1.acp import ACPConfig, ACPHarness
 from verifiers.v1.clients import ModelContext
 from verifiers.v1.configs.harness import HarnessConfig, PinnedVersion
 from verifiers.v1.harnesses.node import NODE_BIN_DIR, ensure_node
+from verifiers.v1.harnesses.search_tools import check_offline_search_tools
 from verifiers.v1.harnesses.utils.install import ensure_installed
 from verifiers.v1.runtimes import Runtime
 from verifiers.v1.task import TaskData
@@ -45,6 +46,9 @@ fi
 
 
 class PiHarnessConfig(HarnessConfig):
+    compaction: bool = False
+    """Enable native context compaction, reserving 32K tokens for generation."""
+
     version: PinnedVersion = "0.84.1"
     """Pi release to install, pinned for reproducibility."""
     transport: Literal["chat_completions", "responses", "anthropic_messages"] = (
@@ -63,6 +67,7 @@ class PiHarness(ACPHarness[PiHarnessConfig]):
     async def setup(self, runtime: Runtime) -> None:
         await self.install_skills(runtime, SKILLS_DIR)
         await ensure_node(runtime)
+        await check_offline_search_tools(runtime)
         logger.info(
             "pi: ensuring Pi %s and pi-acp %s are installed",
             self.config.version,
@@ -112,6 +117,8 @@ class PiHarness(ACPHarness[PiHarnessConfig]):
         )
         model_config = {
             "id": model,
+            "contextWindow": 131072,
+            "maxTokens": ctx.sampling.max_tokens or 16384,
             "reasoning": reasoning,
             "input": ["text", "image"],
             **(
@@ -130,6 +137,18 @@ class PiHarness(ACPHarness[PiHarnessConfig]):
                 }
             }
         }
+        await runtime.write(
+            f"{agent_dir}/settings.json",
+            json.dumps(
+                {
+                    "compaction": {
+                        "enabled": self.config.compaction,
+                        "reserveTokens": 32768,
+                        "keepRecentTokens": 16384,
+                    },
+                }
+            ).encode(),
+        )
         await runtime.write(f"{agent_dir}/models.json", json.dumps(models).encode())
 
         mcp_args: list[str] = []
@@ -185,7 +204,7 @@ class PiHarness(ACPHarness[PiHarnessConfig]):
         env["PI_ACP_PI_COMMAND"] = pi_wrapper
         return ACPConfig(
             env=env,
-            command=ACP_COMMAND,
+            command=["sh", "-eu", "-c", f'export PATH="{NODE_BIN_DIR}:$PATH"; exec "$@"', "pi", *ACP_COMMAND],
             prompt=prompt,
             # Pi's extension owns the task-scoped MCP configuration.
             mcp_urls={},
