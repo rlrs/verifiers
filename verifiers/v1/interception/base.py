@@ -30,10 +30,16 @@ class BaseInterceptionConfig(BaseConfig):
     type: str
 
     def host_tunnel(self):
-        """Transport for host tool servers, scoped to this environment."""
-        from verifiers.v1.interception.tunnel import PrimeTunnelConfig, make_tunnel
+        """Transport for host tool servers, scoped to this environment: the
+        interception's own tunnel when it can expose any port, else Prime's."""
+        from verifiers.v1.interception.tunnel import (
+            PrimeTunnel,
+            PrimeTunnelConfig,
+            make_tunnel,
+        )
 
-        return make_tunnel(getattr(self, "tunnel", PrimeTunnelConfig()))
+        tunnel = make_tunnel(getattr(self, "tunnel", PrimeTunnelConfig()))
+        return tunnel if tunnel.exposes_any_port else PrimeTunnel()
 
     @model_validator(mode="wrap")
     @classmethod

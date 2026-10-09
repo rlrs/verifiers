@@ -1,7 +1,6 @@
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
-
 from typing import Annotated
 
 from pydantic import Field
@@ -35,7 +34,9 @@ __all__ = [
 ]
 
 
-_host_tunnel: ContextVar[Tunnel | Callable[[], Tunnel] | None] = ContextVar("host_tool_tunnel", default=None)
+_host_tunnel: ContextVar[Tunnel | Callable[[], Tunnel] | None] = ContextVar(
+    "host_tool_tunnel", default=None
+)
 
 
 def configured_host_tunnel() -> Tunnel | None:
@@ -54,4 +55,10 @@ def using_host_tunnel(tunnel: Tunnel | Callable[[], Tunnel]):
     try:
         yield
     finally:
-        _host_tunnel.reset(token)
+        try:
+            _host_tunnel.reset(token)
+        except ValueError:
+            # Exited in another context than it was entered in (GEPA enters and exits
+            # `env.serving()` in separate `run_until_complete` calls): the setting
+            # belonged to the entering task's context, which ended with it.
+            pass

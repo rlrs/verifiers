@@ -31,6 +31,10 @@ class Tunnel(ABC, Generic[ConfigT]):
     default — frpc reaches it over localhost; `CustomTunnel` binds all interfaces so a
     remote consumer can reach it directly (or via a proxy)."""
 
+    exposes_any_port: ClassVar[bool] = True
+    """Whether `expose(port)` reaches the given port. A tunnel fronting one fixed port
+    (`CustomTunnel`) cannot serve host tool servers."""
+
     def __init__(self, config: ConfigT | None = None) -> None:
         self.config = config
 

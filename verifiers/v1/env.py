@@ -255,6 +255,21 @@ class Env(ABC, Generic[ConfigT]):
         completed subset, its exception on the episode's `errors`. `on_trace` observes
         each agent-run's trace at mint; `on_discard` its abandonment (a per-agent
         retry mints a replacement)."""
+        from verifiers.v1.interception.tunnel import using_host_tunnel
+
+        # Host tool servers resolve this env's tunnel from the episode's own context
+        # too, not only from `serving()`'s: GEPA runs episodes in contexts that
+        # `serving()` never entered.
+        with using_host_tunnel(self.config.interception.host_tunnel):
+            return await self._run_episode(task, ctx, on_trace, on_discard)
+
+    async def _run_episode(
+        self,
+        task: Task,
+        ctx: ModelContext,
+        on_trace: Callable[[Trace], None] | None,
+        on_discard: Callable[[Trace], None] | None,
+    ) -> Episode:
         episode = Episode(
             env=EnvInfo(id=self.config.env_id),
             task=TraceTask(

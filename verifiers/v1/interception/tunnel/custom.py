@@ -32,6 +32,7 @@ class CustomTunnelConfig(BaseTunnelConfig):
 
 class CustomTunnel(Tunnel[CustomTunnelConfig]):
     bind_host: ClassVar[str] = "0.0.0.0"
+    exposes_any_port: ClassVar[bool] = False
 
     @property
     def bind_port(self) -> int:
