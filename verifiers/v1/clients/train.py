@@ -16,7 +16,13 @@ from renderers.base import ToolCallParseStatus, is_multimodal
 from verifiers.v1.clients.base import build_async_openai
 from verifiers.v1.clients.client import SESSION_ID_HEADER, Client
 from verifiers.v1.configs.client import TrainClientConfig
-from verifiers.v1.dialects import FINISH_REASONS, ChatDialect, Dialect, parse_tools
+from verifiers.v1.dialects import (
+    FINISH_REASONS,
+    WIRE_FINISH_REASONS,
+    ChatDialect,
+    Dialect,
+    parse_tools,
+)
 from verifiers.v1.dialects.chat import message_to_wire
 from verifiers.v1.errors import ContextLimitReached, model_error
 from verifiers.v1.graph import PendingTurn
@@ -66,6 +72,7 @@ def serialize_completion(response: Response, model: str) -> dict:
             }
             for c in response.message.tool_calls
         ]
+    finish_reason = response.finish_reason or "stop"
     usage: dict | None = None
     if response.usage:
         # Usage is validated earlier in the pipeline; building its wire dict directly saves time.
@@ -91,7 +98,7 @@ def serialize_completion(response: Response, model: str) -> dict:
             {
                 "index": 0,
                 "message": message,
-                "finish_reason": response.finish_reason or "stop",
+                "finish_reason": WIRE_FINISH_REASONS.get(finish_reason, finish_reason),
             }
         ],
         "usage": usage,

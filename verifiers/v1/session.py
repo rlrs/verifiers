@@ -20,7 +20,9 @@ from pydantic import TypeAdapter
 
 from verifiers.v1 import graph
 from verifiers.v1.clients import Client, ModelContext
+from verifiers.v1.configs.agent import DegenerateTurnLimit
 from verifiers.v1.configs.runtime import NetworkPolicyConfig
+from verifiers.v1.degenerate import turn_mean_nll
 from verifiers.v1.errors import RolloutError, TaskError
 from verifiers.v1.trace import InterceptRecord, Trace
 from verifiers.v1.types import (
@@ -71,6 +73,24 @@ class RolloutLimits:
     max_input_tokens: int | None = None
     max_output_tokens: int | None = None
     max_total_tokens: int | None = None
+    degenerate_turn: DegenerateTurnLimit | None = None
+    """Stop the rollout right after a committed turn that meets the degenerate-turn rule
+    (`verifiers.v1.degenerate`); unlike the caps above, it is checked per committed turn
+    (`degenerate`), and its stop condition is `degenerate_turn`."""
+
+    def degenerate(self, logprobs: list[float], finish_reason: str | None) -> bool:
+        """Whether one just-committed sampled turn meets the degenerate-turn rule."""
+        rule = self.degenerate_turn
+        return (
+            rule is not None
+            and turn_mean_nll(
+                logprobs,
+                finish_reason,
+                min_tokens=rule.min_tokens,
+                max_mean_nll=rule.max_mean_nll,
+            )
+            is not None
+        )
 
     def reached(self, trace: Trace) -> str | None:
         """The name of the first limit `trace` has reached, or None if within all caps."""

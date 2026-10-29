@@ -2,6 +2,7 @@ from verifiers.v1.dialects.anthropic import AnthropicDialect
 from verifiers.v1.dialects.base import Dialect, StreamParser
 from verifiers.v1.dialects.chat import (
     FINISH_REASONS,
+    WIRE_FINISH_REASONS,
     ChatDialect,
     parse_message,
     parse_tools,
@@ -15,6 +16,7 @@ the wire format from the route a request arrived on."""
 __all__ = [
     "DIALECTS",
     "FINISH_REASONS",
+    "WIRE_FINISH_REASONS",
     "AnthropicDialect",
     "ChatDialect",
     "Dialect",

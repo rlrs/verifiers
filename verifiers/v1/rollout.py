@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from verifiers.v1.clients import ModelContext
 from verifiers.v1.configs.agent import AgentConfig
 from verifiers.v1.configs.runtime import NetworkPolicyConfig
+from verifiers.v1.degenerate import DEGENERATE_TURN
 from verifiers.v1.errors import (
     HarnessError,
     RolloutError,
@@ -480,17 +481,20 @@ class Rollout:
                             )
                 now = time.time()
                 trace.timing.finalize.end = now
-                trace.timing.scoring.start = now
-                async with boundary(TaskError, "scoring"):
-                    # Cross-trace judgement runs later, after the runtime is gone.
-                    await asyncio.wait_for(
-                        asyncio.gather(
-                            self.task.score(trace, runtime),
-                            self.harness.score(trace, runtime),
-                        ),
-                        self._timeouts.scoring,
-                    )
-                trace.timing.scoring.end = time.time()
+                # A degenerate-turn stop marks a trace its trainer discards; skip scoring
+                # (tests, judges) that nothing would read.
+                if trace.stop_condition != DEGENERATE_TURN:
+                    trace.timing.scoring.start = now
+                    async with boundary(TaskError, "scoring"):
+                        # Cross-trace judgement runs later, after the runtime is gone.
+                        await asyncio.wait_for(
+                            asyncio.gather(
+                                self.task.score(trace, runtime),
+                                self.harness.score(trace, runtime),
+                            ),
+                            self._timeouts.scoring,
+                        )
+                    trace.timing.scoring.end = time.time()
         except Exception as e:  # noqa: BLE001 - finalize boundary records every rollout failure
             self.fail(e)
         finally:

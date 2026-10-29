@@ -619,7 +619,8 @@ class Trace(BaseModel, Generic[DataT, StateT, AgentConfigT]):
 
     @property
     def is_truncated(self) -> bool:
-        """True for framework limits or a length-finished final response."""
+        """True for framework limits or a truncated final response (`length`, or the
+        engine's `repetition` stop, which cuts a turn the same way)."""
         if self.stop_condition in (
             "max_turns",
             "max_input_tokens",
@@ -628,7 +629,7 @@ class Trace(BaseModel, Generic[DataT, StateT, AgentConfigT]):
         ):
             return True
         last = next((c for c in reversed(self.calls) if c.error is None), None)
-        return bool(last and last.finish_reason == "length")
+        return bool(last and last.finish_reason in ("length", "repetition"))
 
     @property
     def assistant_messages(self) -> list[AssistantMessage]:

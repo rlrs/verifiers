@@ -60,7 +60,10 @@ class ModdedChatCompletion(ChatCompletion):
     service_tier: str | None = None
 
 
-FINISH_REASONS = frozenset({"stop", "length", "tool_calls"})
+FINISH_REASONS = frozenset({"stop", "length", "tool_calls", "repetition"})
+WIRE_FINISH_REASONS = {"repetition": "length"}
+"""Recorded finish reasons served to harnesses under another name: an engine repetition stop
+truncates the turn like the max-tokens cap, so agents continue exactly as on `length`."""
 # Client tools return calls to the harness; every other type may execute at the provider.
 _CLIENT_TOOL_TYPES = ("function", "custom")
 _SAFE_CONTENT_TYPES = ("text", "refusal", "input_audio", "image_url", "file")

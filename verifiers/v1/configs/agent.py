@@ -1,6 +1,6 @@
 """One env agent's config: who plays the seat, and its per-run caps."""
 
-from pydantic import SerializeAsAny, model_validator
+from pydantic import Field, SerializeAsAny, model_validator
 from pydantic_config import BaseConfig
 
 from verifiers.v1.clients import ClientConfig
@@ -21,6 +21,14 @@ class TimeoutConfig(BaseConfig):
     """Timeout (in seconds) for the task + harness finalize hooks."""
     scoring: float | None = None
     """Timeout (in seconds) for the task + harness metrics + scoring hooks."""
+
+
+class DegenerateTurnLimit(BaseConfig):
+    """The degenerate-turn rule (`verifiers.v1.degenerate`): a sampled turn of at least
+    `min_tokens` tokens whose mean negative sampling logprob exceeds `max_mean_nll`."""
+
+    min_tokens: int = Field(100, ge=1)
+    max_mean_nll: float = Field(3.0, gt=0)
 
 
 class AgentConfig(BaseConfig):
@@ -45,6 +53,9 @@ class AgentConfig(BaseConfig):
     """Max output tokens per run (None = no limit)."""
     max_total_tokens: int | None = None
     """Max total tokens per run (None = no limit)."""
+    degenerate_turn: DegenerateTurnLimit | None = None
+    """Stop the run right after a degenerate sampled turn (None = never). Needs sampling
+    logprobs, so it only acts on training (renderer-client) turns."""
 
     timeout: TimeoutConfig = TimeoutConfig()
     retries: RetryConfig = RetryConfig()

@@ -110,7 +110,10 @@ class Request(BaseModel):
     tools: list[Tool] | None = None
 
 
-FinishReason = Literal["stop", "length", "tool_calls"] | None
+FinishReason = Literal["stop", "length", "tool_calls", "repetition"] | None
+"""Why a model call stopped. `repetition` is vLLM's repetition-detection stop
+(`SamplingParams.repetition_detection`): a truncation like `length`, recorded as itself on
+the trace and served to harnesses as `length` (`WIRE_FINISH_REASONS`)."""
 
 
 class Usage(BaseModel):

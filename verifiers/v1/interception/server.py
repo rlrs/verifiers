@@ -42,6 +42,7 @@ from verifiers.v1 import graph
 from verifiers.v1.clients import Client, resolve_client
 from verifiers.v1.clients.base import join_url
 from verifiers.v1.configs.client import BaseClientConfig, resolve_api_key
+from verifiers.v1.degenerate import DEGENERATE_TURN
 from verifiers.v1.dialects import DIALECTS, Dialect
 from verifiers.v1.dialects.base import (
     PROVIDER_CAPABILITY_POLICY_CODE,
@@ -744,6 +745,13 @@ class InterceptionServer(Interception):
                     node = turn.commit(call_response, model_request.tools)
                     session.consume_prepared(turn.tail)
                     session.trace.response_rewrites.extend(response_rewrites)
+                    if stopped is None and session.limits.degenerate(
+                        session.trace.nodes[node].logprobs,
+                        call_response.finish_reason,
+                    ):
+                        # The committed turn derailed: the trace will not train, so end
+                        # the rollout now instead of sampling turns that get discarded.
+                        stopped = DEGENERATE_TURN
                     if stopped is not None:
                         session.trace.stop(stopped)
                         return web.json_response(
