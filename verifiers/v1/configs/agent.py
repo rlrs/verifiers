@@ -25,10 +25,20 @@ class TimeoutConfig(BaseConfig):
 
 class DegenerateTurnLimit(BaseConfig):
     """The degenerate-turn rule (`verifiers.v1.degenerate`): a sampled turn of at least
-    `min_tokens` tokens whose mean negative sampling logprob exceeds `max_mean_nll`."""
+    `min_tokens` tokens whose mean negative sampling logprob exceeds `max_mean_nll`. A turn
+    vLLM stopped for repetition is judged on its tokens before the loop, whose period is
+    searched in [`min_pattern_size`, `max_pattern_size`] (match `repetition_detection`)."""
 
     min_tokens: int = Field(100, ge=1)
     max_mean_nll: float = Field(3.0, gt=0)
+    min_pattern_size: int = Field(16, ge=1)
+    max_pattern_size: int = Field(64, ge=1)
+
+    @model_validator(mode="after")
+    def _check_pattern_sizes(self):
+        if self.min_pattern_size > self.max_pattern_size:
+            raise ValueError("min_pattern_size must be <= max_pattern_size")
+        return self
 
 
 class AgentConfig(BaseConfig):

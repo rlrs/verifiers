@@ -746,7 +746,7 @@ class InterceptionServer(Interception):
                     session.consume_prepared(turn.tail)
                     session.trace.response_rewrites.extend(response_rewrites)
                     if stopped is None and session.limits.degenerate(
-                        session.trace.nodes[node].logprobs,
+                        session.trace.nodes[node],
                         call_response.finish_reason,
                     ):
                         # The committed turn derailed: the trace will not train, so end

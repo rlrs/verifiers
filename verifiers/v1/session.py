@@ -22,7 +22,7 @@ from verifiers.v1 import graph
 from verifiers.v1.clients import Client, ModelContext
 from verifiers.v1.configs.agent import DegenerateTurnLimit
 from verifiers.v1.configs.runtime import NetworkPolicyConfig
-from verifiers.v1.degenerate import turn_mean_nll
+from verifiers.v1.degenerate import node_mean_nll
 from verifiers.v1.errors import RolloutError, TaskError
 from verifiers.v1.trace import InterceptRecord, Trace
 from verifiers.v1.types import (
@@ -78,16 +78,17 @@ class RolloutLimits:
     (`verifiers.v1.degenerate`); unlike the caps above, it is checked per committed turn
     (`degenerate`), and its stop condition is `degenerate_turn`."""
 
-    def degenerate(self, logprobs: list[float], finish_reason: str | None) -> bool:
-        """Whether one just-committed sampled turn meets the degenerate-turn rule."""
+    def degenerate(self, node: graph.MessageNode, finish_reason: str | None) -> bool:
+        """Whether one just-committed sampled node meets the degenerate-turn rule."""
         rule = self.degenerate_turn
         return (
             rule is not None
-            and turn_mean_nll(
-                logprobs,
+            and node_mean_nll(
+                node,
                 finish_reason,
                 min_tokens=rule.min_tokens,
                 max_mean_nll=rule.max_mean_nll,
+                pattern_sizes=(rule.min_pattern_size, rule.max_pattern_size),
             )
             is not None
         )
