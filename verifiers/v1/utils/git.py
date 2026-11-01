@@ -54,6 +54,9 @@ _DIFF = (
     "git add -A; "
     "add_rc=$?; "
     '[ "$#" -gt 0 ] && git reset -q -- "$@"; '
+    # Harness state the framework writes into the workdir (`.vf-pi-agent-*` with its
+    # provider config, `.vf-bash-edges-*`, ...) is not the agent's work.
+    "git reset -q -- ':(glob).vf-*' ':(glob).vf-*/**'; "
     'git -c core.quotepath=off diff --cached --binary "$VF_DIFF_BASE" > {full}; '
     "diff_rc=$?; "
     "git reset -q; "
